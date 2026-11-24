@@ -78,7 +78,7 @@ export async function notifyStaff(input: HandoffInput): Promise<void> {
     );
   } else console.warn("STAFF_GROUP_ID not set, skip group push");
 
-  const hook = process.env.HANDOFF_SHEET_WEBHOOK_URL;
+  const hook = process.env.APPS_SCRIPT_URL;
   if (hook) {
     labels.push("sheet webhook");
     tasks.push(
@@ -88,7 +88,7 @@ export async function notifyStaff(input: HandoffInput): Promise<void> {
           headers: { "Content-Type": "application/json" },
           redirect: "follow",
           body: JSON.stringify({
-            secret: process.env.HANDOFF_SECRET,
+            key: process.env.APPS_SCRIPT_KEY,
             displayName,
             userId,
             question,
@@ -96,12 +96,14 @@ export async function notifyStaff(input: HandoffInput): Promise<void> {
             branch,
             product,
           }),
-        }).then((r) => {
+        }).then(async (r) => {
           if (!r.ok) throw new Error(`status ${r.status}`);
+          const j = await r.json().catch(() => null);
+          if (!j?.ok) throw new Error(`apps script replied ${JSON.stringify(j)}`);
         }),
       ),
     );
-  } else console.warn("HANDOFF_SHEET_WEBHOOK_URL not set, skip sheet");
+  } else console.warn("APPS_SCRIPT_URL not set, skip sheet");
 
   const results = await Promise.allSettled(tasks);
   results.forEach((r, i) => {

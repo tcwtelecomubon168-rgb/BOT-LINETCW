@@ -3,7 +3,10 @@ import { DEFAULT_REPLY } from "@/lib/constants";
 import { askGemini } from "@/lib/gemini";
 import { notifyStaff, type HandoffReason } from "@/lib/handoff";
 import { lineClient } from "@/lib/line";
-import { getSheetsText } from "@/lib/sheet";
+import { buildContext } from "@/lib/context";
+import { getBotData } from "@/lib/data";
+import { getHistory, pushHistory } from "@/lib/history";
+import { buildPrompt } from "@/lib/prompt";
 
 type WebhookEvent = webhook.Event;
 
@@ -72,16 +75,22 @@ async function handleEvent(ev: WebhookEvent) {
   }
 
   const text = ev.message.text;
-  const sheetsText = await getSheetsText();
-  if (!sheetsText) {
+  const data = await getBotData();
+  if (!data) {
     await reply(token, userId, DEFAULT_REPLY);
     await handoff(userId, text, "sheet_error");
     return;
   }
 
-  const r = await askGemini(text, sheetsText);
+  const history = getHistory(userId);
+  const faqText = buildContext(data, text, history);
+  const r = await askGemini(buildPrompt(faqText, history, text));
+
   // ไม่มีข้อมูล (not_found) → เงียบ ไม่ตอบลูกค้า แต่ยังแจ้งเจ้าหน้าที่
-  if (r.intent !== "not_found") await reply(token, userId, r.reply);
+  const silent = r.intent === "not_found";
+  if (!silent) await reply(token, userId, r.reply);
+  pushHistory(userId, "user", text);
+  if (!silent) pushHistory(userId, "admin", r.reply);
 
   if (r.errorReason) {
     await handoff(userId, text, r.errorReason === "max_tokens" ? "max_tokens" : "gemini_error");

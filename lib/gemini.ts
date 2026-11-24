@@ -1,6 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
 import { DEFAULT_REPLY, MODEL } from "./constants";
-import { buildPrompt } from "./prompt";
 
 export interface GeminiResult {
   reply: string;
@@ -36,7 +35,7 @@ const fail = (errorReason: "max_tokens" | "gemini_error"): GeminiResult => ({
   errorReason,
 });
 
-export async function askGemini(question: string, sheetsText: string): Promise<GeminiResult> {
+export async function askGemini(prompt: string): Promise<GeminiResult> {
   const started = Date.now();
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -46,7 +45,7 @@ export async function askGemini(question: string, sheetsText: string): Promise<G
     });
     const call = ai.models.generateContent({
       model: MODEL,
-      contents: buildPrompt(sheetsText, question),
+      contents: prompt,
       config: {
         temperature: 1.0, // ห้ามลด (Gemini 3.x จะเพี้ยน)
         maxOutputTokens: 1024, // thinking + output รวมกัน ห้ามลด
@@ -76,6 +75,7 @@ export async function askGemini(question: string, sheetsText: string): Promise<G
       finishReason,
       thoughtsTokenCount: u?.thoughtsTokenCount,
       candidatesTokenCount: u?.candidatesTokenCount,
+      promptTokenCount: u?.promptTokenCount,
       ms: Date.now() - started,
     };
 
