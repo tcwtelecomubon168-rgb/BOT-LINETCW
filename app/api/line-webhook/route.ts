@@ -80,7 +80,8 @@ async function handleEvent(ev: WebhookEvent) {
   }
 
   const r = await askGemini(text, sheetsText);
-  await reply(token, userId, r.reply);
+  // ไม่มีข้อมูล (not_found) → เงียบ ไม่ตอบลูกค้า แต่ยังแจ้งเจ้าหน้าที่
+  if (r.intent !== "not_found") await reply(token, userId, r.reply);
 
   if (r.errorReason) {
     await handoff(userId, text, r.errorReason === "max_tokens" ? "max_tokens" : "gemini_error");
