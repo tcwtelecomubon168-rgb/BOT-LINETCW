@@ -3,21 +3,17 @@ import { TZ } from "./constants";
 
 export type HandoffReason =
   | "cut_branch"
-  | "installment"
-  | "not_in_faq"
+  | "not_in_sheet"
   | "sheet_error"
   | "gemini_error"
-  | "max_tokens"
-  | "non_text";
+  | "max_tokens";
 
 const REASON_TH: Record<HandoffReason, string> = {
   cut_branch: "ขอตัดของสาขา",
-  installment: "ถามเรื่องผ่อน",
-  not_in_faq: "ไม่มีข้อมูลใน FAQ",
+  not_in_sheet: "ไม่มีข้อมูลสินค้าในชีท",
   sheet_error: "ดึงชีทไม่ได้",
   gemini_error: "AI ขัดข้อง/เกินเวลา",
   max_tokens: "AI ตอบไม่จบ",
-  non_text: "ส่งสติกเกอร์/รูป",
 };
 
 export interface HandoffInput {

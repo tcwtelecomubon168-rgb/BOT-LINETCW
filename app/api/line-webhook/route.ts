@@ -1,5 +1,4 @@
 import { validateSignature, webhook } from "@line/bot-sdk";
-import { DEFAULT_REPLY } from "@/lib/constants";
 import { askGemini } from "@/lib/gemini";
 import { notifyStaff, type HandoffReason } from "@/lib/handoff";
 import { lineClient } from "@/lib/line";
@@ -68,16 +67,26 @@ async function handleEvent(ev: WebhookEvent) {
   const token = ev.replyToken;
   if (!token) return;
 
+  // โหมดทดสอบ: มี TEST_USER_IDS → ตอบเฉพาะคนในรายการ
+  const testIds = (process.env.TEST_USER_IDS ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (testIds.length && !testIds.includes(userId)) {
+    console.log("skip non-test user", userId);
+    return;
+  }
+
+  // รูป/สติกเกอร์/วิดีโอ/ไฟล์/เสียง/ตำแหน่ง → ไม่ตอบ ไม่แจ้ง
   if (ev.message.type !== "text") {
-    await reply(token, userId, DEFAULT_REPLY);
-    await handoff(userId, `[${ev.message.type}]`, "non_text");
+    console.log("skip non-text", ev.message.type);
     return;
   }
 
   const text = ev.message.text;
   const data = await getBotData();
   if (!data) {
-    await reply(token, userId, DEFAULT_REPLY);
+    // ระบบขัดข้อง → ไม่ตอบ แต่แจ้งกลุ่มให้เจ้าหน้าที่ตอบแทน
     await handoff(userId, text, "sheet_error");
     return;
   }
@@ -86,20 +95,17 @@ async function handleEvent(ev: WebhookEvent) {
   const faqText = buildContext(data, text, history);
   const r = await askGemini(buildPrompt(faqText, history, text));
 
-  // ไม่มีข้อมูล (not_found) → เงียบ ไม่ตอบลูกค้า แต่ยังแจ้งเจ้าหน้าที่
-  const silent = r.intent === "not_found";
-  if (!silent) await reply(token, userId, r.reply);
+  // reply ว่าง (intent other หรือ error) → ไม่ส่งอะไร
+  if (r.reply) await reply(token, userId, r.reply);
   pushHistory(userId, "user", text);
-  if (!silent) pushHistory(userId, "admin", r.reply);
+  if (r.reply) pushHistory(userId, "admin", r.reply);
 
   if (r.errorReason) {
     await handoff(userId, text, r.errorReason === "max_tokens" ? "max_tokens" : "gemini_error");
   } else if (r.intent === "cut_branch" && r.inStock === true) {
     await handoff(userId, text, "cut_branch", r.branch, r.product);
-  } else if (r.intent === "installment") {
-    await handoff(userId, text, "installment");
-  } else if (r.intent === "not_found") {
-    await handoff(userId, text, "not_in_faq");
+  } else if (r.intent === "product_not_found") {
+    await handoff(userId, text, "not_in_sheet");
   }
 }
 

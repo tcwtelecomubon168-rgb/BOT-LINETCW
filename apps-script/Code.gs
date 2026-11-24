@@ -19,6 +19,7 @@ const REASON = {
   cut_branch: 'ขอตัดของสาขา',
   installment: 'ถามเรื่องผ่อน',
   not_in_faq: 'ไม่มีข้อมูลใน FAQ',
+  not_in_sheet: 'ไม่มีข้อมูลสินค้าในชีท',
   sheet_error: 'ดึงชีทไม่ได้',
   gemini_error: 'AI ขัดข้อง/เกินเวลา',
   max_tokens: 'AI ตอบไม่จบ',

@@ -29,7 +29,6 @@ export function buildContext(data: BotData, text: string, history: HistoryItem[]
       : NOT_FOUND;
 
   const out = [
-    `<sheet name="FAQ">\n${csv(["หมวด", "คำถาม", "คำตอบ"], data.faq)}\n</sheet>`,
     `<sheet name="ราคา">\n${csv(["ยี่ห้อ", "รุ่น", "ราคาตัดสด", "ราคาปลีก"], data.price)}\n</sheet>`,
     `<sheet name="สต๊อก">\n${stockBody}\n</sheet>`,
     `<sheet name="สต๊อกสาขา">\n${branchBody}\n</sheet>`,

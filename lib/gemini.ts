@@ -29,8 +29,9 @@ function clean(text: string): string {
   return t;
 }
 
+// ระบบขัดข้อง → reply ว่าง (บอทไม่ตอบ เจ้าหน้าที่ตอบแทน)
 const fail = (errorReason: "max_tokens" | "gemini_error"): GeminiResult => ({
-  reply: DEFAULT_REPLY,
+  reply: "",
   intent: "error",
   errorReason,
 });
@@ -57,7 +58,7 @@ export async function askGemini(prompt: string): Promise<GeminiResult> {
             reply: { type: "string" },
             intent: {
               type: "string",
-              enum: ["general", "price", "stock", "cut_branch", "installment", "not_found", "greeting"],
+              enum: ["price", "stock", "cut_branch", "product_ask", "product_not_found", "other"],
             },
             branch: { type: "string" },
             product: { type: "string" },
@@ -96,13 +97,18 @@ export async function askGemini(prompt: string): Promise<GeminiResult> {
       console.error("gemini bad JSON:", raw.slice(0, 200));
       return fail("gemini_error");
     }
-    if (!parsed.reply || !parsed.reply.trim() || !parsed.intent) return fail("gemini_error");
+    if (!parsed.intent) return fail("gemini_error");
+    // intent other = ไม่ตอบ (reply ว่าง) · intent อื่นต้องมี reply
+    if (parsed.intent !== "other" && !parsed.reply?.trim()) return fail("gemini_error");
 
     console.log(JSON.stringify({ ...base, intent: parsed.intent }));
 
-    const forced = parsed.intent === "installment" || parsed.intent === "not_found";
+    let reply: string;
+    if (parsed.intent === "other") reply = "";
+    else if (parsed.intent === "product_not_found") reply = DEFAULT_REPLY;
+    else reply = clean(parsed.reply ?? "");
     return {
-      reply: forced ? DEFAULT_REPLY : clean(parsed.reply),
+      reply,
       intent: parsed.intent,
       branch: parsed.branch || undefined,
       product: parsed.product || undefined,
