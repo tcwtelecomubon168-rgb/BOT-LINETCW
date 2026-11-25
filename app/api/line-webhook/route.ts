@@ -97,10 +97,7 @@ async function handleEvent(ev: WebhookEvent) {
 
   const history = getHistory(userId);
   const faqText = buildContext(data, text, history);
-  const r = await askGemini(
-    buildPrompt(faqText, history, text),
-    data.faq.map((row) => row[2]),
-  );
+  const r = await askGemini(buildPrompt(faqText, history, text), data.faq);
 
   // reply ว่าง (intent other หรือ error) → ไม่ส่งอะไร
   if (r.reply) await reply(token, userId, r.reply);
@@ -114,7 +111,8 @@ async function handleEvent(ev: WebhookEvent) {
   } else if (r.intent === "requisition" && r.inStock !== undefined) {
     const reason = r.inStock ? "requisition" : "order_check";
     await handoff(userId, text, reason, undefined, r.product);
-  } else if (r.intent === "product_not_found") {
+  } else if (r.intent === "product_not_found" || (r.intent === "bank_account" && !r.reply)) {
+    // bank_account ที่ไม่มีคำตอบในชีท → บอทเงียบ แต่แจ้งกลุ่มให้เจ้าหน้าที่ตอบ
     await handoff(userId, text, "not_in_sheet");
   }
 }

@@ -6,6 +6,7 @@ import {
   ORDER_CHECK_REPLY,
   REQUISITION_REPLY,
 } from "./constants";
+import { bankReply, isBankRow, type FaqRow, type PayType } from "./bank";
 
 export interface GeminiResult {
   reply: string;
@@ -42,8 +43,8 @@ const fail = (errorReason: "max_tokens" | "gemini_error"): GeminiResult => ({
   errorReason,
 });
 
-// faqAnswers = คำตอบจากชีท FAQ เรียงตามลำดับข้อ (ข้อ 1 = index 0)
-export async function askGemini(prompt: string, faqAnswers: string[]): Promise<GeminiResult> {
+// faq = แถวจากชีท FAQ เรียงตามลำดับข้อ (ข้อ 1 = index 0)
+export async function askGemini(prompt: string, faq: FaqRow[]): Promise<GeminiResult> {
   const started = Date.now();
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -65,8 +66,9 @@ export async function askGemini(prompt: string, faqAnswers: string[]): Promise<G
             reply: { type: "string" },
             intent: {
               type: "string",
-              enum: ["price", "stock", "cut_branch", "requisition", "product_ask", "product_not_found", "faq", "other"],
+              enum: ["price", "stock", "cut_branch", "requisition", "product_ask", "product_not_found", "faq", "bank_account", "other"],
             },
+            pay_type: { type: "string", enum: ["cash", "finance", "unknown"] },
             branch: { type: "string" },
             product: { type: "string" },
             in_stock: { type: "boolean" },
@@ -98,7 +100,7 @@ export async function askGemini(prompt: string, faqAnswers: string[]): Promise<G
     }
 
     const raw = response.text ?? "";
-    let parsed: { reply?: string; intent?: string; branch?: string; product?: string; in_stock?: boolean; faq_id?: number };
+    let parsed: { reply?: string; intent?: string; branch?: string; product?: string; in_stock?: boolean; faq_id?: number; pay_type?: PayType };
     try {
       parsed = JSON.parse(raw);
     } catch {
@@ -107,7 +109,7 @@ export async function askGemini(prompt: string, faqAnswers: string[]): Promise<G
     }
     if (!parsed.intent) return fail("gemini_error");
     // intent other = ไม่ตอบ · faq = ใช้คำตอบจากชีท · intent อื่นต้องมี reply
-    if (parsed.intent !== "other" && parsed.intent !== "faq" && !parsed.reply?.trim()) {
+    if (!["other", "faq", "bank_account"].includes(parsed.intent) && !parsed.reply?.trim()) {
       return fail("gemini_error");
     }
 
@@ -116,7 +118,12 @@ export async function askGemini(prompt: string, faqAnswers: string[]): Promise<G
     let reply: string;
     if (parsed.intent === "other") reply = "";
     // ส่งคำตอบจากชีทตรงตัว (ไม่ผ่าน clean) · เลขข้อไม่ถูกต้อง = เงียบ
-    else if (parsed.intent === "faq") reply = faqAnswers[(parsed.faq_id ?? 0) - 1] ?? "";
+    else if (parsed.intent === "bank_account") reply = bankReply(faq, parsed.pay_type);
+    else if (parsed.intent === "faq") {
+      const row = faq[(parsed.faq_id ?? 0) - 1];
+      // กันหลุด: AI เลือกแถวเลขบัญชีผ่าน faq โดยตรง → ต้องถามประเภทก่อนเสมอ
+      reply = !row ? "" : isBankRow(row) ? bankReply(faq, "unknown") : row[2];
+    }
     else if (parsed.intent === "product_not_found") reply = DEFAULT_REPLY;
     else if (parsed.intent === "cut_branch" && parsed.in_stock === true) reply = CUT_BRANCH_REPLY;
     else if (parsed.intent === "requisition" && parsed.in_stock === true) reply = REQUISITION_REPLY;

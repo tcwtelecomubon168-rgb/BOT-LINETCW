@@ -127,12 +127,24 @@ export function buildPrompt(faqText: string, history: HistoryItem[], question: s
     - ไม่มีรุ่นนั้นในชีทราคา → intent = product_not_found ตามข้อ 15
     - ถ้าถามทั้งราคาตัดสดและราคาปลีกในข้อความเดียว ให้ตอบทั้งสองราคา
     - ถ้าเป็นคำถามที่ตรงกับ FAQ (เช่น ตัดสดโอนบัญชีไหน) ให้ใช้ข้อ 18
+
+เรื่องเลขบัญชี (ข้อนี้ใช้ก่อนข้อ 9, 18, 19 และ 20)
+21. ถ้าลูกค้าถามหรือขอเลขบัญชีสำหรับโอนเงิน (เช่น "โอนบัญชีไหน", "ขอเลขบัญชีหน่อย")
+    → intent = bank_account, reply = "" (ระบบจะตอบให้เอง) และใส่ pay_type
+    - ข้อความหรือ <history> ล่าสุดระบุชัดว่าตัดสด → pay_type = cash
+    - ระบุชัดว่าขายไฟแนนซ์ / ไฟแนนซ์ / จัดไฟแนนซ์ → pay_type = finance
+    - ไม่ได้ระบุ หรือไม่แน่ใจ → pay_type = unknown ห้ามเดา
+    - ข้อความล่าสุดของแอดมินใน <history> คือ "ลูกค้าขายไฟแนนซ์ หรือ ตัดสด ครับ"
+      แล้วลูกค้าตอบว่า "ตัดสด" หรือ "ไฟแนนซ์" → intent = bank_account พร้อม pay_type ตามที่ตอบ
+    - ใช้ intent นี้แทน faq กับคำถามเรื่องเลขบัญชีทุกกรณี
+    - แค่แจ้งว่าโอนแล้ว ไม่ได้ถามเลขบัญชี → intent = other
 </constraints>
 
 <output_format>
 ตอบเป็น JSON ตาม schema ที่กำหนด
 - reply: ข้อความที่ส่งให้ลูกค้า ภาษาไทย ข้อความธรรมดา ไม่ใช้ markdown ไม่ใช้ตัวหนา หัวข้อ หรือบูลเล็ต
-- intent: price | stock | cut_branch | requisition | product_ask | product_not_found | faq | other
+- intent: price | stock | cut_branch | requisition | product_ask | product_not_found | faq | bank_account | other
+- pay_type: cash | finance | unknown (เฉพาะ intent = bank_account)
 - intent = other → reply ต้องเป็น "" (ว่าง)
 - branch: ชื่อสาขาเต็มตามข้อมูล (เฉพาะ cut_branch)
 - product: ชื่อสินค้าตามข้อมูล (ถ้ามี)
