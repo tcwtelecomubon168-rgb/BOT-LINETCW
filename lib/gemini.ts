@@ -1,5 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
-import { DEFAULT_REPLY, MODEL } from "./constants";
+import { CUT_BRANCH_REPLY, DEFAULT_REPLY, MODEL } from "./constants";
 
 export interface GeminiResult {
   reply: string;
@@ -106,6 +106,7 @@ export async function askGemini(prompt: string): Promise<GeminiResult> {
     let reply: string;
     if (parsed.intent === "other") reply = "";
     else if (parsed.intent === "product_not_found") reply = DEFAULT_REPLY;
+    else if (parsed.intent === "cut_branch" && parsed.in_stock === true) reply = CUT_BRANCH_REPLY;
     else reply = clean(parsed.reply ?? "");
     return {
       reply,
