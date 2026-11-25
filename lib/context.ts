@@ -13,9 +13,14 @@ const csv = (header: string[], rows: string[][]) =>
 export function buildContext(data: BotData, text: string, history: HistoryItem[]): string {
   let tokens = queryTokens(text);
   if (tokens.length < 2) {
-    // ข้อความสั้น (เช่น "256 สีดำ") → เอา token จากข้อความลูกค้าก่อนหน้า 1 ข้อความ
-    const prev = [...history].reverse().find((h) => h.role === "user");
-    if (prev) tokens = Array.from(new Set([...tokens, ...queryTokens(prev.text)]));
+    // ข้อความสั้น (เช่น "256 สีดำ") → เอา token จากข้อความลูกค้าก่อนหน้าล่าสุดที่ระบุสินค้า
+    // (ข้ามข้อความที่ไม่มี token เช่น "อำนาจ สีเขียว" ไม่งั้นพิมพ์ซ้ำแล้วบอทลืมรุ่น)
+    const prev = [...history]
+      .reverse()
+      .filter((h) => h.role === "user")
+      .map((h) => queryTokens(h.text))
+      .find((t) => t.length > 0);
+    if (prev) tokens = Array.from(new Set([...tokens, ...prev]));
   }
 
   const warehouse = pickRows(data.warehouseStock, (r) => r, tokens, 60);

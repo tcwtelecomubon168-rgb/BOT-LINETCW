@@ -8,7 +8,7 @@ export type BotData = {
 };
 
 const TTL_MS = 60_000;
-const TIMEOUT_MS = 4000;
+const TIMEOUT_MS = 6000;
 let cache: { data: BotData; at: number } | null = null;
 
 function valid(d: unknown): d is BotData {

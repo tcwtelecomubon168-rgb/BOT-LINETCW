@@ -10,7 +10,7 @@ export interface GeminiResult {
   errorReason?: "max_tokens" | "gemini_error";
 }
 
-const TIMEOUT_MS = 7000;
+const TIMEOUT_MS = 12_000;
 const MAX_REPLY = 1000;
 let ai: GoogleGenAI | null = null;
 
