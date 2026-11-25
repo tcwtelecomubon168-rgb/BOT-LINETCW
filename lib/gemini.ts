@@ -67,7 +67,7 @@ export async function askGemini(prompt: string, faq: FaqRow[]): Promise<GeminiRe
             reply: { type: "string" },
             intent: {
               type: "string",
-              enum: ["price", "stock", "cut_branch", "requisition", "product_ask", "product_not_found", "faq", "bank_account", "other"],
+              enum: ["price", "stock", "cut_branch", "requisition", "product_ask", "product_not_found", "faq", "bank_account", "special_order", "app_issue", "other"],
             },
             pay_type: { type: "string", enum: ["cash", "finance", "unknown"] },
             branch: { type: "string" },
@@ -110,7 +110,7 @@ export async function askGemini(prompt: string, faq: FaqRow[]): Promise<GeminiRe
     }
     if (!parsed.intent) return fail("gemini_error");
     // intent other = ไม่ตอบ · faq = ใช้คำตอบจากชีท · intent อื่นต้องมี reply
-    if (!["other", "faq", "bank_account"].includes(parsed.intent) && !parsed.reply?.trim()) {
+    if (!["other", "faq", "bank_account", "special_order", "app_issue"].includes(parsed.intent) && !parsed.reply?.trim()) {
       return fail("gemini_error");
     }
 
@@ -120,6 +120,7 @@ export async function askGemini(prompt: string, faq: FaqRow[]): Promise<GeminiRe
     let sendFinanceQr = false;
     if (parsed.intent === "other") reply = "";
     // ส่งคำตอบจากชีทตรงตัว (ไม่ผ่าน clean) · เลขข้อไม่ถูกต้อง = เงียบ
+    else if (parsed.intent === "special_order" || parsed.intent === "app_issue") reply = DEFAULT_REPLY;
     else if (parsed.intent === "bank_account") {
       reply = bankReply(faq, parsed.pay_type);
       if (parsed.pay_type === "finance") {

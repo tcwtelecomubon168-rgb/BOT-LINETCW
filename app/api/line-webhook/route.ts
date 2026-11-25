@@ -47,11 +47,17 @@ async function handoff(
   branch?: string,
   product?: string,
 ) {
-  // คำขอสินค้า (ตัดของ/เบิก/เช็กสั่ง) กันซ้ำเฉพาะรายการเดิม 10 นาที · อื่น ๆ 30 นาที
-  const isRequest =
-    reason === "cut_branch" || reason === "requisition" || reason === "order_check";
+  // เรื่องเกี่ยวกับสินค้า กันซ้ำเฉพาะรายการเดิม 10 นาที · อื่น ๆ 30 นาที
+  const isRequest = [
+    "cut_branch",
+    "requisition",
+    "order_check",
+    "out_of_stock",
+    "not_in_sheet",
+    "special_order",
+  ].includes(reason);
   const key = isRequest
-    ? `${userId}|${reason}|${branch}|${product}`
+    ? `${userId}|${reason}|${branch}|${product ?? question}`
     : `${userId}|${reason}`;
   if (!shouldNotify(key, isRequest ? 10 * MIN : 30 * MIN)) return;
   try {
@@ -98,7 +104,7 @@ async function handleEvent(ev: WebhookEvent, baseUrl: string) {
   const text = ev.message.text;
   const data = await getBotData();
   if (!data) {
-    // ระบบขัดข้อง → ไม่ตอบ แต่แจ้งกลุ่มให้เจ้าหน้าที่ตอบแทน
+    // ระบบขัดข้อง → ไม่ตอบ บันทึกลงชีทอย่างเดียว (ไม่ส่งเข้ากลุ่ม)
     await handoff(userId, text, "sheet_error");
     return;
   }
@@ -115,9 +121,13 @@ async function handleEvent(ev: WebhookEvent, baseUrl: string) {
       sendFinanceQr: payType === "finance",
     };
   } else {
-    const faqText = buildContext(data, text, history);
-    const answer = await askGemini(buildPrompt(faqText, history, text), data.faq);
-    r = verifyStock(answer, data.warehouseStock);
+    const context = buildContext(data, text, history);
+    const answer = await askGemini(buildPrompt(context.text, history, text), data.faq);
+    // ตรวจกับรายการเดียวกับที่ส่งให้ AI (รวม 3 คลัง หรือเฉพาะพื้นที่ที่ถาม) · เบิกใช้รายการรวมเสมอ
+    r =
+      answer.intent === "requisition" && context.area
+        ? answer
+        : verifyStock(answer, context.stockList, context.area);
   }
 
   // reply ว่าง (intent other หรือ error) → ไม่ส่งอะไร
@@ -135,9 +145,17 @@ async function handleEvent(ev: WebhookEvent, baseUrl: string) {
   } else if (r.intent === "requisition" && r.inStock !== undefined) {
     const reason = r.inStock ? "requisition" : "order_check";
     await handoff(userId, text, reason, undefined, r.product);
-  } else if (r.intent === "product_not_found" || (r.intent === "bank_account" && !r.reply)) {
-    // bank_account ที่ไม่มีคำตอบในชีท → บอทเงียบ แต่แจ้งกลุ่มให้เจ้าหน้าที่ตอบ
-    await handoff(userId, text, "not_in_sheet");
+  } else if ((r.intent === "stock" || r.intent === "cut_branch") && r.inStock === false) {
+    await handoff(userId, text, "out_of_stock", r.branch, r.product);
+  } else if (r.intent === "product_not_found") {
+    await handoff(userId, text, "not_in_sheet", undefined, r.product);
+  } else if (r.intent === "special_order") {
+    await handoff(userId, text, "special_order", undefined, r.product);
+  } else if (r.intent === "app_issue") {
+    await handoff(userId, text, "app_issue");
+  } else if (r.intent === "bank_account" && !r.reply) {
+    // ไม่มีคำตอบบัญชีในชีท → บอทเงียบ บันทึกลงชีท
+    await handoff(userId, text, "not_in_faq");
   }
 }
 

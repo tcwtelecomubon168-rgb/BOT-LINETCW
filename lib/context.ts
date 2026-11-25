@@ -6,11 +6,31 @@ const NO_MODEL = "(ลูกค้ายังไม่ได้ระบุร�
 const NOT_FOUND = "(ไม่พบสินค้าที่ตรงกับคำถาม = ไม่มีสินค้า)";
 
 const cell = (v: string) => (/[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+const AREAS: [string, RegExp][] = [
+  ["อุบล", /อุบล/],
+  ["สุรินทร์", /สุรินทร/],
+  ["ร้อยเอ็ด", /ร้อยเอ็ด|ร้อยเอ็จ/],
+];
+
+// ลูกค้าถามสต๊อกของพื้นที่ไหน · ตัดของ/เบิก/สาขา ใช้กฎเดิม · ข้อความตอบต่อสั้น ๆ ใช้พื้นที่จากข้อความก่อนหน้า
+export function detectArea(text: string, history: HistoryItem[]): string | undefined {
+  const previous = history.filter((h) => h.role === "user").map((h) => h.text).reverse();
+  let tokens: string[] = [];
+  for (const m of [text, ...previous]) {
+    if (/ตัดของ|ตัดสต๊อก|เบิก|สาขา|bigc|lotus|central/i.test(m)) return undefined;
+    const found = AREAS.filter(([, re]) => re.test(m));
+    if (found.length) return found.length === 1 ? found[0][0] : undefined;
+    tokens = tokens.concat(queryTokens(m));
+    if (tokens.length >= 2) break;
+  }
+  return undefined;
+}
+
 const csv = (header: string[], rows: string[][]) =>
   [header, ...rows].map((r) => r.map(cell).join(",")).join("\n");
 
 // คัดข้อมูลที่เกี่ยวกับคำถาม → ข้อความสำหรับ <faq> (สต๊อกสาขา ~2,500 แถว ส่งหมดไม่ได้)
-export function buildContext(data: BotData, text: string, history: HistoryItem[]): string {
+export function buildContext(data: BotData, text: string, history: HistoryItem[]) {
   let tokens = queryTokens(text);
   if (tokens.length < 2) {
     // ข้อความสั้น (เช่น "256 สีดำ", "มีสีอะไรบ้าง") → ย้อนรวม token จากข้อความลูกค้าก่อนหน้า
@@ -22,7 +42,14 @@ export function buildContext(data: BotData, text: string, history: HistoryItem[]
     }
   }
 
-  const warehouse = pickRows(data.warehouseStock, (r) => r, tokens, 60);
+  const areaName = detectArea(text, history);
+  const areaStock = areaName ? data.warehouses?.[areaName] : undefined;
+  if (areaName && !areaStock) {
+    console.error(`no stock list for area "${areaName}" (อัปเดต Code.gs หรือยัง)`);
+  }
+  const area = areaStock ? areaName : undefined;
+  const stockList = areaStock ?? data.warehouseStock;
+  const warehouse = pickRows(stockList, (r) => r, tokens, 60);
   const branch = pickRows(data.branchStock, (r) => r[1], tokens, 150);
 
   const stockBody = !tokens.length ? NO_MODEL : warehouse.length ? warehouse.join("\n") : NOT_FOUND;
@@ -40,17 +67,18 @@ export function buildContext(data: BotData, text: string, history: HistoryItem[]
 ${csv(["ข้อ", "หมวด", "คำถาม"], faqRows)}
 </sheet>`,
     `<sheet name="ราคา">\n${csv(["ยี่ห้อ", "รุ่น", "ราคาตัดสด", "ราคาปลีก"], data.price)}\n</sheet>`,
-    `<sheet name="สต๊อก">\n${stockBody}\n</sheet>`,
+    `<sheet name="สต๊อก"${area ? ` พื้นที่="${area}"` : ""}>\n${stockBody}\n</sheet>`,
     `<sheet name="สต๊อกสาขา">\n${branchBody}\n</sheet>`,
   ].join("\n");
 
   console.log(
     JSON.stringify({
       tokens,
+      area,
       warehouseRows: warehouse.length,
       branchRows: branch.length,
       chars: out.length,
     }),
   );
-  return out;
+  return { text: out, stockList, area };
 }

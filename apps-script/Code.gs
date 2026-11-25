@@ -19,6 +19,9 @@ const REASON = {
   cut_branch: 'ขอตัดของสาขา',
   requisition: 'ขอเบิกสินค้า',
   order_check: 'ตรวจสอบการสั่งสินค้า',
+  out_of_stock: 'สินค้าไม่มีในสต๊อก',
+  special_order: 'สั่งสินค้ารุ่นพิเศษ',
+  app_issue: 'ปัญหาการใช้งานแอป',
   installment: 'ถามเรื่องผ่อน',
   not_in_faq: 'ไม่มีข้อมูลใน FAQ',
   not_in_sheet: 'ไม่มีข้อมูลสินค้าในชีท',
@@ -90,12 +93,14 @@ function handoffSheet_() {
 
 function buildData_() {
   const problems = [];
+  const warehouse = parseWarehouseStock_(problems);
   return {
     updatedAt: new Date().toISOString(),
     faq: parseFaq_(grid_(SHEET_NAMES.faq, problems), problems),
     price: parsePrice_(grid_(SHEET_NAMES.price, problems), problems),
     branchStock: parseBranchStock_(grid_(SHEET_NAMES.branch, problems), problems),
-    warehouseStock: parseWarehouseStock_(problems),
+    warehouseStock: warehouse.all,
+    warehouses: warehouse.byArea,
     problems: problems,
   };
 }
@@ -209,10 +214,11 @@ function parseBranchStock_(grid, problems) {
   return out;
 }
 
-// รวม 3 คลัง → รายชื่อสินค้าที่ผลรวม > 0 (ไม่ส่งชื่อคลังและจำนวน)
+// all = รายชื่อสินค้าที่ 3 คลังรวมกันมีของ · byArea = รายชื่อที่มีของแยกตามพื้นที่ (ไม่ส่งจำนวน)
 function parseWarehouseStock_(problems) {
   const totals = {};
   const order = [];
+  const byArea = {};
   SHEET_NAMES.warehouses.forEach(function (sheetName) {
     const grid = grid_(sheetName, problems);
     if (!grid || !grid.length) return;
@@ -220,9 +226,11 @@ function parseWarehouseStock_(problems) {
     const p = colIndex_(head, 'ชื่อสินค้า', sheetName, problems);
     const q = colIndex_(head, 'ผลรวม', sheetName, problems);
     if (p < 0 || q < 0) return;
+    const areaTotals = {};
     for (let r = 1; r < grid.length; r++) {
       const product = trim_(grid[r][p]);
       if (!product) continue;
+      areaTotals[product] = (areaTotals[product] || 0) + (toNum_(grid[r][q]) > 0 ? toNum_(grid[r][q]) : 0);
       if (!(product in totals)) {
         totals[product] = 0;
         order.push(product);
@@ -230,6 +238,12 @@ function parseWarehouseStock_(problems) {
       const n = toNum_(grid[r][q]);
       totals[product] += n > 0 ? n : 0;
     }
+    byArea[sheetName.replace('สต๊อกคลัง', '')] = Object.keys(areaTotals).filter(function (k) {
+      return areaTotals[k] > 0;
+    });
   });
-  return order.filter(function (n) { return totals[n] > 0; });
+  return {
+    all: order.filter(function (n) { return totals[n] > 0; }),
+    byArea: byArea,
+  };
 }

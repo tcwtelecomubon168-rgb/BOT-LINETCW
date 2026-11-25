@@ -6,6 +6,10 @@ export type HandoffReason =
   | "requisition"
   | "order_check"
   | "not_in_sheet"
+  | "out_of_stock"
+  | "special_order"
+  | "app_issue"
+  | "not_in_faq"
   | "sheet_error"
   | "gemini_error"
   | "max_tokens";
@@ -15,6 +19,10 @@ const REASON_TH: Record<HandoffReason, string> = {
   requisition: "ขอเบิกสินค้า",
   order_check: "ตรวจสอบการสั่งสินค้า",
   not_in_sheet: "ไม่มีข้อมูลสินค้าในชีท",
+  out_of_stock: "สินค้าไม่มีในสต๊อก",
+  special_order: "สั่งสินค้ารุ่นพิเศษ",
+  app_issue: "ปัญหาการใช้งานแอป",
+  not_in_faq: "ไม่มีข้อมูลใน FAQ",
   sheet_error: "ดึงชีทไม่ได้",
   gemini_error: "AI ขัดข้อง/เกินเวลา",
   max_tokens: "AI ตอบไม่จบ",
@@ -27,6 +35,17 @@ export interface HandoffInput {
   branch?: string;
   product?: string;
 }
+
+// เฉพาะเหตุผลในตารางนี้ที่ส่งเข้ากลุ่ม · เหตุผลอื่น (ระบบขัดข้อง ฯลฯ) บันทึกลงชีทอย่างเดียว
+const GROUP_TITLES: Partial<Record<HandoffReason, string>> = {
+  cut_branch: "📦 ขอตัดของสาขา",
+  requisition: "📦 ขอเบิกสินค้า",
+  order_check: "🛒 ขอตรวจสอบการสั่งสินค้า",
+  out_of_stock: "❌ สินค้าไม่มีในสต๊อก",
+  not_in_sheet: "🔔 ไม่มีข้อมูลสินค้า/ราคาในชีท",
+  special_order: "⭐ ต้องการสั่งสินค้ารุ่นพิเศษ",
+  app_issue: "📱 ปัญหาการใช้งานแอป",
+};
 
 const TIMEOUT_MS = 5000;
 
@@ -62,18 +81,18 @@ export async function notifyStaff(input: HandoffInput): Promise<void> {
   }
 
   const time = now();
-  const titles: Partial<Record<HandoffReason, string>> = {
-    cut_branch: "📦 ขอตัดของสาขา",
-    requisition: "📦 ขอเบิกสินค้า",
-    order_check: "🛒 ขอตรวจสอบการสั่งสินค้า",
-  };
+  const title = GROUP_TITLES[reason];
   // คำขอที่บอทรู้สินค้าครบแล้ว ใช้ชื่อสินค้าเต็ม (ข้อความล่าสุดอาจมีแค่ สาขา/สี)
   let request = question;
   if (product && reason === "cut_branch") request = `ขอตัดของ ${product}`;
   if (product && (reason === "requisition" || reason === "order_check")) request = `ขอเบิก ${product}`;
 
+  if (product && ["out_of_stock", "not_in_sheet", "special_order"].includes(reason)) {
+    request = `${question} (${product})`;
+  }
+
   const text = [
-    titles[reason] ?? "🔔 ลูกค้ารอติดต่อกลับ (บอทตอบไม่ได้)",
+    title,
     `ชื่อ: ${displayName}`,
     `ลูกค้า: ${request}`,
     `สาขา: ${branch ?? "-"}`,
@@ -84,7 +103,9 @@ export async function notifyStaff(input: HandoffInput): Promise<void> {
   const labels: string[] = [];
 
   const groupId = process.env.STAFF_GROUP_ID;
-  if (groupId) {
+  if (!title) {
+    console.log("handoff to sheet only:", reason);
+  } else if (groupId) {
     labels.push("push group");
     tasks.push(
       withTimeout(lineClient.pushMessage({ to: groupId, messages: [{ type: "text", text }] })),

@@ -4,6 +4,7 @@ export type BotData = {
   price: [string, string, string, string][]; // [ยี่ห้อ, รุ่น, ราคาตัดสด, ราคาปลีก]
   branchStock: [string, string][]; // [สาขา, ชื่อสินค้า] เฉพาะที่มีของ
   warehouseStock: string[]; // ชื่อสินค้าที่ 3 คลังรวมกันมีของ
+  warehouses?: Record<string, string[]>; // ชื่อสินค้าที่มีของ แยกตามพื้นที่ (Code.gs รุ่นใหม่)
   problems: string[];
 };
 

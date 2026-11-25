@@ -15,14 +15,15 @@ export function findInStock(stock: string[], product: string): string | undefine
   return want ? stock.find((name) => normalize(name) === want) : undefined;
 }
 
-export function verifyStock(r: GeminiResult, warehouseStock: string[]): GeminiResult {
+export function verifyStock(r: GeminiResult, stockList: string[], area?: string): GeminiResult {
   if (r.intent !== "stock" && r.intent !== "requisition") return r;
   const saidNo = r.inStock === false || (r.inStock === undefined && r.reply.includes("ไม่มีสินค้า"));
   if (!saidNo || !r.product) return r;
-  const name = findInStock(warehouseStock, r.product);
+  const name = findInStock(stockList, r.product);
   if (!name) return r;
 
   console.warn(JSON.stringify({ note: "stock answer corrected", intent: r.intent, product: name }));
-  const reply = r.intent === "requisition" ? REQUISITION_REPLY : `${name} มีสินค้าค่ะ 😊`;
+  const where = area ? ` ที่${area}` : "";
+  const reply = r.intent === "requisition" ? REQUISITION_REPLY : `${name}${where} มีสินค้าค่ะ 😊`;
   return { ...r, reply, inStock: true, product: name };
 }
