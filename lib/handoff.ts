@@ -62,24 +62,23 @@ export async function notifyStaff(input: HandoffInput): Promise<void> {
   }
 
   const time = now();
-  const stockMessage = (title: string, note: string) =>
-    `${title}
-ชื่อ: ${displayName}
-สินค้า: ${product ?? "-"}
-ข้อความลูกค้า: ${question}
-${note}
-เวลา: ${time}`;
+  const titles: Partial<Record<HandoffReason, string>> = {
+    cut_branch: "📦 ขอตัดของสาขา",
+    requisition: "📦 ขอเบิกสินค้า",
+    order_check: "🛒 ขอตรวจสอบการสั่งสินค้า",
+  };
+  // คำขอที่บอทรู้สินค้าครบแล้ว ใช้ชื่อสินค้าเต็ม (ข้อความล่าสุดอาจมีแค่ สาขา/สี)
+  let request = question;
+  if (product && reason === "cut_branch") request = `ขอตัดของ ${product}`;
+  if (product && (reason === "requisition" || reason === "order_check")) request = `ขอเบิก ${product}`;
 
-  let text: string;
-  if (reason === "cut_branch") {
-    text = `📦 ขอตัดของสาขา\nชื่อ: ${displayName}\nสาขา: ${branch ?? "-"}\nสินค้า: ${product ?? "-"}\nข้อความลูกค้า: ${question}\n⚠️ บอทเช็คจากชีทว่า "มี" กรุณายืนยันสต๊อกจริงก่อนตัด\nเวลา: ${time}`;
-  } else if (reason === "requisition") {
-    text = stockMessage("📦 ขอเบิกสินค้า", '⚠️ บอทเช็คจากชีทคลังว่า "มี" กรุณายืนยันสต๊อกจริงก่อนเบิก');
-  } else if (reason === "order_check") {
-    text = stockMessage("🛒 ขอตรวจสอบการสั่งสินค้า", "⚠️ บอทไม่พบสินค้าในคลัง กรุณาตรวจสอบว่าสั่งได้ไหม แล้วติดต่อลูกค้า");
-  } else {
-    text = `🔔 ลูกค้ารอติดต่อกลับ\nชื่อ: ${displayName}\nคำถาม: ${question}\nสาเหตุ: ${REASON_TH[reason]}\nเวลา: ${time}`;
-  }
+  const text = [
+    titles[reason] ?? "🔔 ลูกค้ารอติดต่อกลับ (บอทตอบไม่ได้)",
+    `ชื่อ: ${displayName}`,
+    `ลูกค้า: ${request}`,
+    `สาขา: ${branch ?? "-"}`,
+    `เวลา: ${time}`,
+  ].join("\n");
 
   const tasks: Promise<unknown>[] = [];
   const labels: string[] = [];
