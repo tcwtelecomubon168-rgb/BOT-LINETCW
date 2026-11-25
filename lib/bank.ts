@@ -4,6 +4,11 @@ export type FaqRow = [string, string, string]; // [หมวด, คำถาม
 
 export const BANK_ASK_REPLY = "ลูกค้าขายไฟแนนซ์ หรือ ตัดสด ครับ";
 
+// รูป QR สำหรับขายไฟแนนซ์ (ไฟล์ใน public/ — เปลี่ยนรูปได้ด้วยการ push เท่านั้น ไม่อ่านลิงก์จากชีท)
+export const FINANCE_QR_PATH = "/qr-finance.jpg";
+// ใช้เมื่อชีท FAQ ยังไม่มีแถวคำตอบสำหรับไฟแนนซ์
+export const FINANCE_QR_TEXT = "กรณีขายไฟแนนซ์ สแกน QR Code ด้านล่างได้เลยครับ";
+
 const KEYWORD = { cash: "ตัดสด", finance: "ไฟแนนซ์" } as const;
 
 // แถว FAQ เรื่องโอนเงิน/บัญชี (ดูจากหมวดและคำถาม)

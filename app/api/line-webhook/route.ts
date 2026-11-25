@@ -1,4 +1,5 @@
 import { validateSignature, webhook } from "@line/bot-sdk";
+import { FINANCE_QR_PATH } from "@/lib/bank";
 import { askGemini } from "@/lib/gemini";
 import { notifyStaff, type HandoffReason } from "@/lib/handoff";
 import { lineClient } from "@/lib/line";
@@ -24,9 +25,15 @@ function shouldNotify(key: string, windowMs: number): boolean {
   return true;
 }
 
-async function reply(replyToken: string, userId: string, text: string) {
+async function reply(replyToken: string, userId: string, text: string, imageUrl?: string) {
+  const messages: Parameters<typeof lineClient.replyMessage>[0]["messages"] = [
+    { type: "text", text },
+  ];
+  if (imageUrl) {
+    messages.push({ type: "image", originalContentUrl: imageUrl, previewImageUrl: imageUrl });
+  }
   try {
-    await lineClient.replyMessage({ replyToken, messages: [{ type: "text", text }] });
+    await lineClient.replyMessage({ replyToken, messages });
   } catch (e) {
     console.error("reply failed", userId, String(e));
   }
@@ -53,7 +60,7 @@ async function handoff(
   }
 }
 
-async function handleEvent(ev: WebhookEvent) {
+async function handleEvent(ev: WebhookEvent, baseUrl: string) {
   if (ev.type === "join") {
     const src = ev.source;
     const id = !src ? "" : src.type === "group" ? src.groupId : src.type === "room" ? src.roomId : "";
@@ -100,7 +107,10 @@ async function handleEvent(ev: WebhookEvent) {
   const r = await askGemini(buildPrompt(faqText, history, text), data.faq);
 
   // reply ว่าง (intent other หรือ error) → ไม่ส่งอะไร
-  if (r.reply) await reply(token, userId, r.reply);
+  if (r.reply) {
+    const qr = r.sendFinanceQr ? `${baseUrl}${FINANCE_QR_PATH}` : undefined;
+    await reply(token, userId, r.reply, qr);
+  }
   pushHistory(userId, "user", text);
   if (r.reply) pushHistory(userId, "admin", r.reply);
 
@@ -126,7 +136,10 @@ export async function POST(req: Request) {
       return new Response("unauthorized", { status: 401 });
     }
     const events: WebhookEvent[] = JSON.parse(body).events ?? [];
-    const results = await Promise.allSettled(events.map(handleEvent));
+    // LINE ต้องดึงรูปผ่าน https · ใช้โดเมนเดียวกับที่ LINE เรียก webhook เข้ามา
+    const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? "";
+    const baseUrl = `https://${host}`;
+    const results = await Promise.allSettled(events.map((ev) => handleEvent(ev, baseUrl)));
     results.forEach((r) => {
       if (r.status === "rejected") console.error("event failed", r.reason?.stack ?? String(r.reason));
     });

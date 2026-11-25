@@ -6,7 +6,7 @@ import {
   ORDER_CHECK_REPLY,
   REQUISITION_REPLY,
 } from "./constants";
-import { bankReply, isBankRow, type FaqRow, type PayType } from "./bank";
+import { bankReply, FINANCE_QR_TEXT, isBankRow, type FaqRow, type PayType } from "./bank";
 
 export interface GeminiResult {
   reply: string;
@@ -15,6 +15,7 @@ export interface GeminiResult {
   product?: string;
   inStock?: boolean;
   errorReason?: "max_tokens" | "gemini_error";
+  sendFinanceQr?: boolean;
 }
 
 const TIMEOUT_MS = 12_000;
@@ -116,10 +117,16 @@ export async function askGemini(prompt: string, faq: FaqRow[]): Promise<GeminiRe
     console.log(JSON.stringify({ ...base, intent: parsed.intent }));
 
     let reply: string;
+    let sendFinanceQr = false;
     if (parsed.intent === "other") reply = "";
     // ส่งคำตอบจากชีทตรงตัว (ไม่ผ่าน clean) · เลขข้อไม่ถูกต้อง = เงียบ
-    else if (parsed.intent === "bank_account") reply = bankReply(faq, parsed.pay_type);
-    else if (parsed.intent === "faq") {
+    else if (parsed.intent === "bank_account") {
+      reply = bankReply(faq, parsed.pay_type);
+      if (parsed.pay_type === "finance") {
+        sendFinanceQr = true;
+        reply ||= FINANCE_QR_TEXT;
+      }
+    } else if (parsed.intent === "faq") {
       const row = faq[(parsed.faq_id ?? 0) - 1];
       // กันหลุด: AI เลือกแถวเลขบัญชีผ่าน faq โดยตรง → ต้องถามประเภทก่อนเสมอ
       reply = !row ? "" : isBankRow(row) ? bankReply(faq, "unknown") : row[2];
@@ -135,6 +142,7 @@ export async function askGemini(prompt: string, faq: FaqRow[]): Promise<GeminiRe
       branch: parsed.branch || undefined,
       product: parsed.product || undefined,
       inStock: parsed.in_stock,
+      sendFinanceQr,
     };
   } catch (e) {
     console.error(`gemini error after ${Date.now() - started}ms:`, String(e));
