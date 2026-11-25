@@ -1,6 +1,6 @@
 import { validateSignature, webhook } from "@line/bot-sdk";
-import { FINANCE_QR_PATH } from "@/lib/bank";
-import { askGemini } from "@/lib/gemini";
+import { bankReply, detectPayType, FINANCE_QR_PATH, FINANCE_QR_TEXT } from "@/lib/bank";
+import { askGemini, type GeminiResult } from "@/lib/gemini";
 import { verifyStock } from "@/lib/stock";
 import { notifyStaff, type HandoffReason } from "@/lib/handoff";
 import { lineClient } from "@/lib/line";
@@ -104,9 +104,21 @@ async function handleEvent(ev: WebhookEvent, baseUrl: string) {
   }
 
   const history = getHistory(userId);
-  const faqText = buildContext(data, text, history);
-  const answer = await askGemini(buildPrompt(faqText, history, text), data.faq);
-  const r = verifyStock(answer, data.warehouseStock);
+  const payType = detectPayType(text, history);
+  let r: GeminiResult;
+  if (payType) {
+    console.log(JSON.stringify({ intent: "bank_account", payType, by: "code" }));
+    const bank = bankReply(data.faq, payType);
+    r = {
+      intent: "bank_account",
+      reply: payType === "finance" ? bank || FINANCE_QR_TEXT : bank,
+      sendFinanceQr: payType === "finance",
+    };
+  } else {
+    const faqText = buildContext(data, text, history);
+    const answer = await askGemini(buildPrompt(faqText, history, text), data.faq);
+    r = verifyStock(answer, data.warehouseStock);
+  }
 
   // reply ว่าง (intent other หรือ error) → ไม่ส่งอะไร
   if (r.reply) {
