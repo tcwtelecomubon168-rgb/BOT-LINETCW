@@ -17,6 +17,8 @@ const SHEET_NAMES = {
 
 const REASON = {
   cut_branch: 'ขอตัดของสาขา',
+  requisition: 'ขอเบิกสินค้า',
+  order_check: 'ตรวจสอบการสั่งสินค้า',
   installment: 'ถามเรื่องผ่อน',
   not_in_faq: 'ไม่มีข้อมูลใน FAQ',
   not_in_sheet: 'ไม่มีข้อมูลสินค้าในชีท',

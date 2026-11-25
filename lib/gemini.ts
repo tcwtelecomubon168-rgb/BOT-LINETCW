@@ -1,5 +1,11 @@
 import { GoogleGenAI } from "@google/genai";
-import { CUT_BRANCH_REPLY, DEFAULT_REPLY, MODEL } from "./constants";
+import {
+  CUT_BRANCH_REPLY,
+  DEFAULT_REPLY,
+  MODEL,
+  ORDER_CHECK_REPLY,
+  REQUISITION_REPLY,
+} from "./constants";
 
 export interface GeminiResult {
   reply: string;
@@ -36,7 +42,8 @@ const fail = (errorReason: "max_tokens" | "gemini_error"): GeminiResult => ({
   errorReason,
 });
 
-export async function askGemini(prompt: string): Promise<GeminiResult> {
+// faqAnswers = คำตอบจากชีท FAQ เรียงตามลำดับข้อ (ข้อ 1 = index 0)
+export async function askGemini(prompt: string, faqAnswers: string[]): Promise<GeminiResult> {
   const started = Date.now();
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -58,11 +65,12 @@ export async function askGemini(prompt: string): Promise<GeminiResult> {
             reply: { type: "string" },
             intent: {
               type: "string",
-              enum: ["price", "stock", "cut_branch", "product_ask", "product_not_found", "other"],
+              enum: ["price", "stock", "cut_branch", "requisition", "product_ask", "product_not_found", "faq", "other"],
             },
             branch: { type: "string" },
             product: { type: "string" },
             in_stock: { type: "boolean" },
+            faq_id: { type: "integer" },
           },
           required: ["reply", "intent"],
         },
@@ -90,7 +98,7 @@ export async function askGemini(prompt: string): Promise<GeminiResult> {
     }
 
     const raw = response.text ?? "";
-    let parsed: { reply?: string; intent?: string; branch?: string; product?: string; in_stock?: boolean };
+    let parsed: { reply?: string; intent?: string; branch?: string; product?: string; in_stock?: boolean; faq_id?: number };
     try {
       parsed = JSON.parse(raw);
     } catch {
@@ -98,15 +106,21 @@ export async function askGemini(prompt: string): Promise<GeminiResult> {
       return fail("gemini_error");
     }
     if (!parsed.intent) return fail("gemini_error");
-    // intent other = ไม่ตอบ (reply ว่าง) · intent อื่นต้องมี reply
-    if (parsed.intent !== "other" && !parsed.reply?.trim()) return fail("gemini_error");
+    // intent other = ไม่ตอบ · faq = ใช้คำตอบจากชีท · intent อื่นต้องมี reply
+    if (parsed.intent !== "other" && parsed.intent !== "faq" && !parsed.reply?.trim()) {
+      return fail("gemini_error");
+    }
 
     console.log(JSON.stringify({ ...base, intent: parsed.intent }));
 
     let reply: string;
     if (parsed.intent === "other") reply = "";
+    // ส่งคำตอบจากชีทตรงตัว (ไม่ผ่าน clean) · เลขข้อไม่ถูกต้อง = เงียบ
+    else if (parsed.intent === "faq") reply = faqAnswers[(parsed.faq_id ?? 0) - 1] ?? "";
     else if (parsed.intent === "product_not_found") reply = DEFAULT_REPLY;
     else if (parsed.intent === "cut_branch" && parsed.in_stock === true) reply = CUT_BRANCH_REPLY;
+    else if (parsed.intent === "requisition" && parsed.in_stock === true) reply = REQUISITION_REPLY;
+    else if (parsed.intent === "requisition" && parsed.in_stock === false) reply = ORDER_CHECK_REPLY;
     else reply = clean(parsed.reply ?? "");
     return {
       reply,

@@ -3,6 +3,8 @@ import { TZ } from "./constants";
 
 export type HandoffReason =
   | "cut_branch"
+  | "requisition"
+  | "order_check"
   | "not_in_sheet"
   | "sheet_error"
   | "gemini_error"
@@ -10,6 +12,8 @@ export type HandoffReason =
 
 const REASON_TH: Record<HandoffReason, string> = {
   cut_branch: "ขอตัดของสาขา",
+  requisition: "ขอเบิกสินค้า",
+  order_check: "ตรวจสอบการสั่งสินค้า",
   not_in_sheet: "ไม่มีข้อมูลสินค้าในชีท",
   sheet_error: "ดึงชีทไม่ได้",
   gemini_error: "AI ขัดข้อง/เกินเวลา",
@@ -58,10 +62,24 @@ export async function notifyStaff(input: HandoffInput): Promise<void> {
   }
 
   const time = now();
-  const text =
-    reason === "cut_branch"
-      ? `📦 ขอตัดของสาขา\nชื่อ: ${displayName}\nสาขา: ${branch ?? "-"}\nสินค้า: ${product ?? "-"}\nข้อความลูกค้า: ${question}\n⚠️ บอทเช็คจากชีทว่า "มี" กรุณายืนยันสต๊อกจริงก่อนตัด\nเวลา: ${time}`
-      : `🔔 ลูกค้ารอติดต่อกลับ\nชื่อ: ${displayName}\nคำถาม: ${question}\nสาเหตุ: ${REASON_TH[reason]}\nเวลา: ${time}`;
+  const stockMessage = (title: string, note: string) =>
+    `${title}
+ชื่อ: ${displayName}
+สินค้า: ${product ?? "-"}
+ข้อความลูกค้า: ${question}
+${note}
+เวลา: ${time}`;
+
+  let text: string;
+  if (reason === "cut_branch") {
+    text = `📦 ขอตัดของสาขา\nชื่อ: ${displayName}\nสาขา: ${branch ?? "-"}\nสินค้า: ${product ?? "-"}\nข้อความลูกค้า: ${question}\n⚠️ บอทเช็คจากชีทว่า "มี" กรุณายืนยันสต๊อกจริงก่อนตัด\nเวลา: ${time}`;
+  } else if (reason === "requisition") {
+    text = stockMessage("📦 ขอเบิกสินค้า", '⚠️ บอทเช็คจากชีทคลังว่า "มี" กรุณายืนยันสต๊อกจริงก่อนเบิก');
+  } else if (reason === "order_check") {
+    text = stockMessage("🛒 ขอตรวจสอบการสั่งสินค้า", "⚠️ บอทไม่พบสินค้าในคลัง กรุณาตรวจสอบว่าสั่งได้ไหม แล้วติดต่อลูกค้า");
+  } else {
+    text = `🔔 ลูกค้ารอติดต่อกลับ\nชื่อ: ${displayName}\nคำถาม: ${question}\nสาเหตุ: ${REASON_TH[reason]}\nเวลา: ${time}`;
+  }
 
   const tasks: Promise<unknown>[] = [];
   const labels: string[] = [];

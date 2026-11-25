@@ -39,9 +39,13 @@ async function handoff(
   branch?: string,
   product?: string,
 ) {
-  const key =
-    reason === "cut_branch" ? `${userId}|cut|${branch}|${product}` : `${userId}|${reason}`;
-  if (!shouldNotify(key, reason === "cut_branch" ? 10 * MIN : 30 * MIN)) return;
+  // คำขอสินค้า (ตัดของ/เบิก/เช็กสั่ง) กันซ้ำเฉพาะรายการเดิม 10 นาที · อื่น ๆ 30 นาที
+  const isRequest =
+    reason === "cut_branch" || reason === "requisition" || reason === "order_check";
+  const key = isRequest
+    ? `${userId}|${reason}|${branch}|${product}`
+    : `${userId}|${reason}`;
+  if (!shouldNotify(key, isRequest ? 10 * MIN : 30 * MIN)) return;
   try {
     await notifyStaff({ userId, question, reason, branch, product });
   } catch (e) {
@@ -93,7 +97,10 @@ async function handleEvent(ev: WebhookEvent) {
 
   const history = getHistory(userId);
   const faqText = buildContext(data, text, history);
-  const r = await askGemini(buildPrompt(faqText, history, text));
+  const r = await askGemini(
+    buildPrompt(faqText, history, text),
+    data.faq.map((row) => row[2]),
+  );
 
   // reply ว่าง (intent other หรือ error) → ไม่ส่งอะไร
   if (r.reply) await reply(token, userId, r.reply);
@@ -104,6 +111,9 @@ async function handleEvent(ev: WebhookEvent) {
     await handoff(userId, text, r.errorReason === "max_tokens" ? "max_tokens" : "gemini_error");
   } else if (r.intent === "cut_branch" && r.inStock === true) {
     await handoff(userId, text, "cut_branch", r.branch, r.product);
+  } else if (r.intent === "requisition" && r.inStock !== undefined) {
+    const reason = r.inStock ? "requisition" : "order_check";
+    await handoff(userId, text, reason, undefined, r.product);
   } else if (r.intent === "product_not_found") {
     await handoff(userId, text, "not_in_sheet");
   }

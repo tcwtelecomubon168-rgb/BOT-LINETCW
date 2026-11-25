@@ -32,7 +32,13 @@ export function buildContext(data: BotData, text: string, history: HistoryItem[]
       ? csv(["สาขา", "ชื่อสินค้า"], branch)
       : NOT_FOUND;
 
+  // FAQ ส่งแค่ ข้อ/หมวด/คำถาม — ไม่ส่งคำตอบ (โค้ดดึงคำตอบจากชีทส่งเอง AI จึงพิมพ์เลขบัญชีเองไม่ได้)
+  const faqRows = data.faq.map(([category, question], i) => [String(i + 1), category, question]);
+
   const out = [
+    `<sheet name="FAQ">
+${csv(["ข้อ", "หมวด", "คำถาม"], faqRows)}
+</sheet>`,
     `<sheet name="ราคา">\n${csv(["ยี่ห้อ", "รุ่น", "ราคาตัดสด", "ราคาปลีก"], data.price)}\n</sheet>`,
     `<sheet name="สต๊อก">\n${stockBody}\n</sheet>`,
     `<sheet name="สต๊อกสาขา">\n${branchBody}\n</sheet>`,
