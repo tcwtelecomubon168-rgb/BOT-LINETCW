@@ -1,6 +1,7 @@
 import { validateSignature, webhook } from "@line/bot-sdk";
 import { FINANCE_QR_PATH } from "@/lib/bank";
 import { askGemini } from "@/lib/gemini";
+import { verifyStock } from "@/lib/stock";
 import { notifyStaff, type HandoffReason } from "@/lib/handoff";
 import { lineClient } from "@/lib/line";
 import { buildContext } from "@/lib/context";
@@ -104,7 +105,8 @@ async function handleEvent(ev: WebhookEvent, baseUrl: string) {
 
   const history = getHistory(userId);
   const faqText = buildContext(data, text, history);
-  const r = await askGemini(buildPrompt(faqText, history, text), data.faq);
+  const answer = await askGemini(buildPrompt(faqText, history, text), data.faq);
+  const r = verifyStock(answer, data.warehouseStock);
 
   // reply ว่าง (intent other หรือ error) → ไม่ส่งอะไร
   if (r.reply) {
