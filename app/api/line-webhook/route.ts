@@ -2,6 +2,8 @@ import { validateSignature, webhook } from "@line/bot-sdk";
 import { bankReply, detectPayType, FINANCE_QR_PATH, FINANCE_QR_TEXT } from "@/lib/bank";
 import { askGemini, type GeminiResult } from "@/lib/gemini";
 import { verifyStock } from "@/lib/stock";
+import { PRICE_LIST_REPLY } from "@/lib/constants";
+import { asksPriceList } from "@/lib/price-list";
 import { notifyStaff, type HandoffReason } from "@/lib/handoff";
 import { lineClient } from "@/lib/line";
 import { buildContext } from "@/lib/context";
@@ -102,6 +104,15 @@ async function handleEvent(ev: WebhookEvent, baseUrl: string) {
   }
 
   const text = ev.message.text;
+  // ขอใบราคา → ตอบได้ทันทีโดยไม่ต้องใช้ข้อมูลชีทหรือ AI และไม่แจ้งกลุ่ม
+  if (asksPriceList(text)) {
+    console.log(JSON.stringify({ intent: "price_list", by: "code" }));
+    await reply(token, userId, PRICE_LIST_REPLY);
+    pushHistory(userId, "user", text);
+    pushHistory(userId, "admin", PRICE_LIST_REPLY);
+    return;
+  }
+
   const data = await getBotData();
   if (!data) {
     // ระบบขัดข้อง → ไม่ตอบ บันทึกลงชีทอย่างเดียว (ไม่ส่งเข้ากลุ่ม)

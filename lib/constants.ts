@@ -8,3 +8,7 @@ export const ORDER_CHECK_REPLY =
   "ตอนนี้ไม่มีสินค้าค่ะ แอดมินส่งเรื่องให้เจ้าหน้าที่ตรวจสอบว่าสั่งสินค้าได้ไหมให้นะคะ";
 // ตอบลูกค้าเมื่อขอตัดของสาขาและสาขานั้นมีของ
 export const CUT_BRANCH_REPLY = "แอดมินส่งเรื่องให้เจ้าหน้าที่ทำรายการตัดของสาขาให้นะคะ";
+// ตอบเมื่อลูกค้าขอใบราคา
+export const PRICE_LIST_URL = "https://tcwtelecomubon168-rgb.github.io/sell-tcw/helper.html";
+export const PRICE_LIST_REPLY = `คุณลูกค้าดูใบราคาล่าสุดได้โดยกดที่ริชเมนู หรือกดลิงก์นี้ได้เลยนะคะ
+${PRICE_LIST_URL}`;
