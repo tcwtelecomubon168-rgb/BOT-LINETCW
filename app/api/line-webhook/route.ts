@@ -4,6 +4,7 @@ import { askGemini, type GeminiResult } from "@/lib/gemini";
 import { verifyStock } from "@/lib/stock";
 import { PRICE_LIST_REPLY } from "@/lib/constants";
 import { asksPriceList } from "@/lib/price-list";
+import { asksCashPriceWithoutModel, CASH_PRICE_ASK_REPLY } from "@/lib/cash-price";
 import { notifyStaff, type HandoffReason } from "@/lib/handoff";
 import { lineClient } from "@/lib/line";
 import { buildContext } from "@/lib/context";
@@ -110,6 +111,14 @@ async function handleEvent(ev: WebhookEvent, baseUrl: string) {
     await reply(token, userId, PRICE_LIST_REPLY);
     pushHistory(userId, "user", text);
     pushHistory(userId, "admin", PRICE_LIST_REPLY);
+    return;
+  }
+
+  if (asksCashPriceWithoutModel(text, getHistory(userId))) {
+    console.log(JSON.stringify({ intent: "product_ask", topic: "cash_price", by: "code" }));
+    await reply(token, userId, CASH_PRICE_ASK_REPLY);
+    pushHistory(userId, "user", text);
+    pushHistory(userId, "admin", CASH_PRICE_ASK_REPLY);
     return;
   }
 
