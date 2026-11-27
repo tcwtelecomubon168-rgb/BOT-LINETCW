@@ -13,6 +13,7 @@ const SHEET_NAMES = {
   branch: 'สต๊อกสาขา',
   warehouses: ['สต๊อกคลังอุบล', 'สต๊อกคลังสุรินทร์', 'สต๊อกคลังร้อยเอ็ด'],
   handoff: 'รอติดต่อกลับ',
+  sku: 'รหัสสินค้า', // ไม่บังคับ: หัวคอลัมน์ SKU, ชื่อสินค้า
 };
 
 const REASON = {
@@ -101,8 +102,29 @@ function buildData_() {
     branchStock: parseBranchStock_(grid_(SHEET_NAMES.branch, problems), problems),
     warehouseStock: warehouse.all,
     warehouses: warehouse.byArea,
+    skus: parseSkus_(problems),
     problems: problems,
   };
+}
+
+// แท็บ "รหัสสินค้า" → [SKU, ชื่อสินค้า] · ไม่มีแท็บ = ไม่ใช้การเทียบ SKU
+function parseSkus_(problems) {
+  const name = SHEET_NAMES.sku;
+  const sheet = SpreadsheetApp.getActive().getSheetByName(name);
+  if (!sheet) return [];
+  const grid = sheet.getDataRange().getDisplayValues();
+  if (!grid.length) return [];
+  const head = grid[0].map(trim_);
+  const code = colIndex_(head, 'SKU', name, problems);
+  const product = colIndex_(head, 'ชื่อสินค้า', name, problems);
+  if (code < 0 || product < 0) return [];
+  const out = [];
+  for (let r = 1; r < grid.length; r++) {
+    const c = trim_(grid[r][code]);
+    const p = trim_(grid[r][product]);
+    if (c && p) out.push([c, p]);
+  }
+  return out;
 }
 
 function grid_(name, problems) {

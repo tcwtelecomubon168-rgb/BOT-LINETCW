@@ -6,6 +6,7 @@ import { BANK_ASK_REPLY } from "./bank";
 import { MODEL } from "./constants";
 import type { HistoryItem } from "./history";
 import { validModelCode, type BoxLabel } from "./image-match";
+import { findSku } from "./sku-match";
 import { queryTokens } from "./match";
 
 const WINDOW_MS = 5 * 60_000;
@@ -76,6 +77,8 @@ const PROMPT = `รูปเหล่านี้เป็นรูปกล่�
 - brand = ยี่ห้อ
 - model = ชื่อรุ่นทางการตลาดตามที่พิมพ์บนกล่อง เช่น "A7 Pro" ไม่ใส่สี ความจุ หรือรหัสรุ่นของโรงงาน
 - model_code = รหัสรุ่นของโรงงานที่พิมพ์บนฉลาก เช่น "X6725", "RMX3933", "SM-A075F" (ไม่ใช่เลข IMEI, S/N, EAN หรือเลขใบอนุญาต NBTC)
+  ถ้าบนกล่องมีแต่รหัสรุ่นและไม่มีชื่อรุ่นพิมพ์ไว้ ให้เว้น model ว่าง ห้ามแปลงรหัสเป็นชื่อรุ่นเอง
+- sku = รหัสสินค้าแบบยาวที่พิมพ์บนฉลาก เช่น "SM-A077FLVDTHL" คัดลอกทีละตัวอักษรตามที่เห็น อ่านไม่ครบหรือไม่ชัดให้เว้นว่าง
 - ram_gb และ storage_gb = ความจุเป็น GB ใส่เฉพาะที่เห็นพิมพ์ไว้ชัดเจน
   ดูให้ครบทุกรูปและทุกตำแหน่ง รวมถึงตัวหนังสือเล็กบนสติกเกอร์ฉลากข้างกล่อง
   รูปแบบที่พบบ่อย เช่น "4GB+64GB", "4/64", "4+64", "4GB RAM 128GB ROM" (เลขน้อยคือ RAM)
@@ -118,6 +121,7 @@ export async function readBoxLabel(messageIds: string[]): Promise<BoxLabel | und
               brand: { type: "string" },
               model: { type: "string" },
               model_code: { type: "string" },
+              sku: { type: "string" },
               ram_gb: { type: "integer" },
               storage_gb: { type: "integer" },
               network: { type: "string" },
@@ -138,6 +142,8 @@ export async function readBoxLabel(messageIds: string[]): Promise<BoxLabel | und
       brand: safe(label.brand),
       model: safe(label.model),
       model_code: validModelCode(label.model_code), // รูปแบบไม่ใช่รหัสรุ่น = ทิ้ง ไม่บันทึก
+      // AI อาจใส่รหัสยาวไว้ช่องอื่น จึงหาจากทุกช่อง (ก่อนตัดเหลือรหัสรุ่น)
+      sku: findSku(label.sku, label.model_code, label.model),
       network: safe(label.network),
     };
   } catch (e) {

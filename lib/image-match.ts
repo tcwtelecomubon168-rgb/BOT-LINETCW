@@ -5,6 +5,7 @@ export interface BoxLabel {
   brand?: string;
   model?: string;
   model_code?: string;
+  sku?: string;
   ram_gb?: number;
   storage_gb?: number;
   network?: string;
@@ -56,9 +57,11 @@ export function parseSpec(name: string): Spec {
     return true;
   });
   // 8/256 · 8+256 · 256+12 · (6GB+128GB) · (8+128G)
-  take(/(?:ram\s*)?(\d+)\s*(?:gb|g)?\s*[+/]\s*(\d+)\s*(gb|g|tb)?(?![a-z0-9])/, (m) =>
-    pair(Number(m[1]), toGb(m[2], m[3])),
-  );
+  // ไล่ทุกตำแหน่ง: ชื่ออย่าง "A11+ 5G (6/128)" มี "11+ 5G" มาก่อนความจุจริง
+  const pairs = /(?:ram\s*)?(\d+)\s*(?:gb|g)?\s*[+/]\s*(\d+)\s*(gb|g|tb)?(?![a-z0-9])/g;
+  for (const m of Array.from(t.matchAll(pairs))) {
+    if (storage === undefined && pair(Number(m[1]), toGb(m[2], m[3]))) t = t.replace(m[0], " ");
+  }
   // 512GB 12GB · 64GB 4GB
   take(/(\d+)\s*(gb|tb)\s+(\d+)\s*(gb|tb)/, (m) => pair(toGb(m[1], m[2]), toGb(m[3], m[4])));
   // 256GB
@@ -92,24 +95,40 @@ export type BoxMatch = {
 
 // รหัสรุ่นโรงงาน เช่น X6725, RMX3933, SM-A075F (ตัวเลขล้วนอย่าง IMEI ไม่ผ่าน)
 const MODEL_CODE = /^(?=.*[a-z])[a-z]{0,3}-?[a-z]?\d{3,5}[a-z0-9]{0,4}$/i;
+// Samsung: SM-A077F/DS หรือรหัสยาว SM-A077FLVDTHL (ต่อท้ายด้วยสี/ประเทศ) → SM-A077F
+const SAMSUNG_CODE = /(?<![a-z0-9])sm-[a-z]\d{3}[a-z]?/i;
 export function validModelCode(code?: string): string | undefined {
-  const c = code?.trim() ?? "";
+  const raw = code?.trim() ?? "";
+  const samsung = raw.match(SAMSUNG_CODE)?.[0];
+  const c = samsung ?? raw.split("/")[0];
   return MODEL_CODE.test(c) && !/\d{8,}/.test(c) ? c.toLowerCase() : undefined;
 }
 
+// ในชีทเขียนได้ทั้ง SM-A077F, SM-A077F/DS หรือ A077F (แบบเดียวกับ X520 ที่มีอยู่)
+const codeForms = (code: string) =>
+  code.startsWith("sm-") ? [code, code.slice(3)] : [code];
 const hasCode = (name: string, code: string) =>
-  new RegExp(`(?<![a-z0-9-])${code}(?![a-z0-9-])`, "i").test(name);
-const without = (name: string, code: string) => name.toLowerCase().split(code).join(" ");
+  codeForms(code).some((c) => new RegExp(`(?<![a-z0-9-])${c}(?![a-z0-9-])`, "i").test(name));
+const without = (name: string, code: string) =>
+  codeForms(code).reduce((t, c) => t.split(c).join(" "), name.toLowerCase()).replace(/\/ds\b/g, " ");
+
+// ชื่อรุ่นในชีทมีรหัสรุ่นกำกับอยู่แล้วหรือไม่
+const TAGGED = /(?<![a-z0-9])(sm-[a-z]\d{3}[a-z]?|[a-z]\d{3}[a-z]|x\d{3,4}[a-z]?|rmx\d{4}|cph\d{4})(?![a-z0-9])/i;
 
 // คืนผลเมื่อ "ตรงรายการเดียว" เท่านั้น
 export function matchBoxLabel(price: PriceRow[], label: BoxLabel): BoxMatch | undefined {
-  if (!label.brand) return undefined;
-  const brand = brandOf(label.brand);
+  // รหัสอาจถูกใส่มาในช่องชื่อรุ่น
+  const inModel = label.model?.match(SAMSUNG_CODE)?.[0];
+  const code = validModelCode(label.model_code) ?? validModelCode(inModel);
+  // ฉลากบางด้านไม่มีคำว่า Samsung แต่รหัส SM- บอกยี่ห้อได้
+  const brandText = label.brand || (code?.startsWith("sm-") ? "samsung" : "");
+  if (!brandText) return undefined;
+  const brand = brandOf(brandText);
   const rows = price.filter((row) => brandOf(row[0]) === brand);
-  const code = validModelCode(label.model_code);
   const byCode = code ? rows.filter((row) => hasCode(row[1], code)) : [];
 
-  const want = parseSpec(code ? without(label.model ?? "", code) : (label.model ?? ""));
+  const modelText = (label.model ?? "").replace(new RegExp(`${SAMSUNG_CODE.source}\\S*`, "gi"), " ");
+  const want = parseSpec(code ? without(modelText, code) : modelText);
   // ไม่พบรหัสในชีท → เทียบด้วยชื่อรุ่น
   if (!byCode.length && !want.key) return undefined;
   const ram = label.ram_gb || want.ram;
@@ -123,7 +142,8 @@ export function matchBoxLabel(price: PriceRow[], label: BoxLabel): BoxMatch | un
   // พบรหัสในชีท: ถ้าอ่านชื่อรุ่นได้ด้วย ต้องไม่ขัดกัน
   const sameModel = byCode.length
     ? all.filter((c) => byCode.includes(c.row) && (!want.key || c.spec.key === want.key))
-    : all.filter((c) => c.spec.key === want.key);
+    : // เทียบด้วยชื่อ: อ่านรหัสได้แต่แถวนั้นมีรหัสอื่นกำกับ = คนละเครื่อง
+      all.filter((c) => c.spec.key === want.key && !(code && TAGGED.test(c.row[1])));
 
   // รุ่นที่ในชีทระบุความจุ ต้องอ่านความจุ (และ RAM ถ้าชีทระบุ) จากรูปได้ตรงกัน
   let found = sameModel.filter(

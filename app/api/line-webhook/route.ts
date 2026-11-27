@@ -13,6 +13,7 @@ import { getBotData } from "@/lib/data";
 import { getHistory, pushHistory } from "@/lib/history";
 import { buildPrompt } from "@/lib/prompt";
 import { matchBoxLabel } from "@/lib/image-match";
+import { matchSku } from "@/lib/sku-match";
 import { chosenZone, needsZoneAsk, ZONE_ASK_REPLY, ZONE_BRANCHES } from "@/lib/kantharalak";
 import {
   imagePriceEnabled,
@@ -86,8 +87,10 @@ async function replyFromImage(token: string, userId: string, text: string, image
     await handoff(userId, text, "sheet_error");
     return;
   }
-  const match = label ? matchBoxLabel(data.price, label) : undefined;
-  const row = match?.row;
+  // เทียบด้วย SKU ก่อน · ไม่มี SKU ในตารางจึงใช้รหัสรุ่น/ชื่อรุ่น
+  const bySku = label ? matchSku(data.price, data.skus ?? [], label.sku, label) : undefined;
+  const match = !label || bySku ? undefined : matchBoxLabel(data.price, label);
+  const row = bySku ? bySku.row : match?.row;
   console.log(
     JSON.stringify({
       intent: "price_from_image",
@@ -95,6 +98,8 @@ async function replyFromImage(token: string, userId: string, text: string, image
       label,
       matched: row?.[1],
       capacityUnread: match?.capacityUnread,
+      skuFound: !!bySku,
+      skuRows: data.skus?.length ?? 0,
     }),
   );
   const note = match?.capacityUnread
