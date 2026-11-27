@@ -4,6 +4,7 @@ import type { BotData } from "./data";
 export interface BoxLabel {
   brand?: string;
   model?: string;
+  model_code?: string;
   ram_gb?: number;
   storage_gb?: number;
   network?: string;
@@ -72,10 +73,13 @@ export function parseSpec(name: string): Spec {
   if (/(?<![a-z0-9])5g(?![a-z0-9])/.test(t)) network = "5g";
   else if (/(?<![a-z0-9])(4g|lte)(?![a-z0-9])/.test(t)) network = "4g";
 
+  // รหัสรุ่นท้ายชื่อ · x + เลข 3 ตัว ตัดเฉพาะแท็บเล็ต (X200 ของรุ่นอื่นคือชื่อรุ่น)
+  if (/(?<![a-z])tab(?![a-z])/.test(t)) t = t.replace(/(?<![a-z0-9])x\d{3}(?![a-z0-9])/g, " ");
+  t = t.replace(/(?<![a-z0-9])(x\d{4}[a-z]?|rmx\d{4}|cph\d{4}|sm-[a-z]\d{3}[a-z]*)(?![a-z0-9])/g, " ");
+
   const key = t
     .replace(IGNORE, " ")
     .replace(/(?<![a-z0-9])(5g|4g|3g|lte)(?![a-z0-9])/g, " ")
-    .replace(/(?<![a-z0-9])x\d{3,4}(?![a-z0-9])/g, " ") // รหัสรุ่นท้ายชื่อ เช่น X135
     .replace(/[^a-z0-9+]/g, "");
 
   return { key, ram, storage, network };
@@ -86,19 +90,40 @@ export type BoxMatch = {
   capacityUnread: boolean; // true = อ่านความจุจากรูปได้ไม่ครบ แต่ชีทมีรุ่นนี้รายการเดียว
 };
 
+// รหัสรุ่นโรงงาน เช่น X6725, RMX3933, SM-A075F (ตัวเลขล้วนอย่าง IMEI ไม่ผ่าน)
+const MODEL_CODE = /^(?=.*[a-z])[a-z]{0,3}-?[a-z]?\d{3,5}[a-z0-9]{0,4}$/i;
+export function validModelCode(code?: string): string | undefined {
+  const c = code?.trim() ?? "";
+  return MODEL_CODE.test(c) && !/\d{8,}/.test(c) ? c.toLowerCase() : undefined;
+}
+
+const hasCode = (name: string, code: string) =>
+  new RegExp(`(?<![a-z0-9-])${code}(?![a-z0-9-])`, "i").test(name);
+const without = (name: string, code: string) => name.toLowerCase().split(code).join(" ");
+
 // คืนผลเมื่อ "ตรงรายการเดียว" เท่านั้น
 export function matchBoxLabel(price: PriceRow[], label: BoxLabel): BoxMatch | undefined {
-  if (!label.brand || !label.model) return undefined;
+  if (!label.brand) return undefined;
   const brand = brandOf(label.brand);
-  const want = parseSpec(label.model);
-  if (!want.key) return undefined;
+  const rows = price.filter((row) => brandOf(row[0]) === brand);
+  const code = validModelCode(label.model_code);
+  const byCode = code ? rows.filter((row) => hasCode(row[1], code)) : [];
+
+  const want = parseSpec(code ? without(label.model ?? "", code) : (label.model ?? ""));
+  // ไม่พบรหัสในชีท → เทียบด้วยชื่อรุ่น
+  if (!byCode.length && !want.key) return undefined;
   const ram = label.ram_gb || want.ram;
   const storage = label.storage_gb || want.storage;
   const net = parseSpec(`x ${label.network ?? ""}`).network ?? want.network;
 
-  const sameModel = price
-    .map((row) => ({ row, spec: parseSpec(row[1]) }))
-    .filter((c) => brandOf(c.row[0]) === brand && c.spec.key === want.key);
+  const all = rows.map((row) => ({
+    row,
+    spec: parseSpec(code ? without(row[1], code) : row[1]),
+  }));
+  // พบรหัสในชีท: ถ้าอ่านชื่อรุ่นได้ด้วย ต้องไม่ขัดกัน
+  const sameModel = byCode.length
+    ? all.filter((c) => byCode.includes(c.row) && (!want.key || c.spec.key === want.key))
+    : all.filter((c) => c.spec.key === want.key);
 
   // รุ่นที่ในชีทระบุความจุ ต้องอ่านความจุ (และ RAM ถ้าชีทระบุ) จากรูปได้ตรงกัน
   let found = sameModel.filter(
@@ -114,7 +139,9 @@ export function matchBoxLabel(price: PriceRow[], label: BoxLabel): BoxMatch | un
     const missing = !storage || (spec.ram !== undefined && !ram);
     const conflict = (!!storage && storage !== spec.storage) ||
       (!!ram && spec.ram !== undefined && ram !== spec.ram);
-    if (missing && !conflict) {
+    // รุ่นเดียวกันมีแถวอื่นที่ยังไม่ได้ใส่รหัส → ความจุไม่แน่ ให้ถามกลับ
+    const untagged = byCode.length > 0 && all.filter((c) => c.spec.key === spec.key).length > 1;
+    if (missing && !conflict && !untagged) {
       found = sameModel;
       capacityUnread = true;
     }

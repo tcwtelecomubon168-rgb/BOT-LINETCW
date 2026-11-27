@@ -5,7 +5,7 @@ import { GoogleGenAI } from "@google/genai";
 import { BANK_ASK_REPLY } from "./bank";
 import { MODEL } from "./constants";
 import type { HistoryItem } from "./history";
-import type { BoxLabel } from "./image-match";
+import { validModelCode, type BoxLabel } from "./image-match";
 import { queryTokens } from "./match";
 
 const WINDOW_MS = 5 * 60_000;
@@ -75,6 +75,7 @@ async function download(client: messagingApi.MessagingApiBlobClient, id: string)
 const PROMPT = `รูปเหล่านี้เป็นรูปกล่องโทรศัพท์หรือแท็บเล็ตเครื่องเดียวกัน อ่านข้อมูลสินค้าจากตัวหนังสือบนกล่อง
 - brand = ยี่ห้อ
 - model = ชื่อรุ่นทางการตลาดตามที่พิมพ์บนกล่อง เช่น "A7 Pro" ไม่ใส่สี ความจุ หรือรหัสรุ่นของโรงงาน
+- model_code = รหัสรุ่นของโรงงานที่พิมพ์บนฉลาก เช่น "X6725", "RMX3933", "SM-A075F" (ไม่ใช่เลข IMEI, S/N, EAN หรือเลขใบอนุญาต NBTC)
 - ram_gb และ storage_gb = ความจุเป็น GB ใส่เฉพาะที่เห็นพิมพ์ไว้ชัดเจน
   ดูให้ครบทุกรูปและทุกตำแหน่ง รวมถึงตัวหนังสือเล็กบนสติกเกอร์ฉลากข้างกล่อง
   รูปแบบที่พบบ่อย เช่น "4GB+64GB", "4/64", "4+64", "4GB RAM 128GB ROM" (เลขน้อยคือ RAM)
@@ -116,6 +117,7 @@ export async function readBoxLabel(messageIds: string[]): Promise<BoxLabel | und
             properties: {
               brand: { type: "string" },
               model: { type: "string" },
+              model_code: { type: "string" },
               ram_gb: { type: "integer" },
               storage_gb: { type: "integer" },
               network: { type: "string" },
@@ -131,7 +133,13 @@ export async function readBoxLabel(messageIds: string[]): Promise<BoxLabel | und
     const label = JSON.parse(response.text ?? "") as BoxLabel;
     // ตัดเลขยาว (เผื่อ IMEI หลุดมา) ก่อนนำไปใช้หรือบันทึก log
     const safe = (v?: string) => v?.replace(/\d{8,}/g, "").slice(0, 60).trim();
-    return { ...label, brand: safe(label.brand), model: safe(label.model), network: safe(label.network) };
+    return {
+      ...label,
+      brand: safe(label.brand),
+      model: safe(label.model),
+      model_code: validModelCode(label.model_code), // รูปแบบไม่ใช่รหัสรุ่น = ทิ้ง ไม่บันทึก
+      network: safe(label.network),
+    };
   } catch (e) {
     console.error(`read image failed after ${Date.now() - started}ms:`, String(e).slice(0, 300));
     return undefined;
