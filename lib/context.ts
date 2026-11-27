@@ -30,7 +30,12 @@ const csv = (header: string[], rows: string[][]) =>
   [header, ...rows].map((r) => r.map(cell).join(",")).join("\n");
 
 // คัดข้อมูลที่เกี่ยวกับคำถาม → ข้อความสำหรับ <faq> (สต๊อกสาขา ~2,500 แถว ส่งหมดไม่ได้)
-export function buildContext(data: BotData, text: string, history: HistoryItem[]) {
+export function buildContext(
+  data: BotData,
+  text: string,
+  history: HistoryItem[],
+  excludeBranch?: string,
+) {
   let tokens = queryTokens(text);
   if (tokens.length < 2) {
     // ข้อความสั้น (เช่น "256 สีดำ", "มีสีอะไรบ้าง") → ย้อนรวม token จากข้อความลูกค้าก่อนหน้า
@@ -50,7 +55,11 @@ export function buildContext(data: BotData, text: string, history: HistoryItem[]
   const area = areaStock ? areaName : undefined;
   const stockList = areaStock ?? data.warehouseStock;
   const warehouse = pickRows(stockList, (r) => r, tokens, 60);
-  const branch = pickRows(data.branchStock, (r) => r[1], tokens, 150);
+  // ลูกค้าเลือกโซนแล้ว → ตัดแถวของอีกโซนออก กัน AI สับสนชื่อที่คล้ายกัน
+  const branchRows = excludeBranch
+    ? data.branchStock.filter((r) => r[0] !== excludeBranch)
+    : data.branchStock;
+  const branch = pickRows(branchRows, (r) => r[1], tokens, 150);
 
   const stockBody = !tokens.length ? NO_MODEL : warehouse.length ? warehouse.join("\n") : NOT_FOUND;
   const branchBody = !tokens.length

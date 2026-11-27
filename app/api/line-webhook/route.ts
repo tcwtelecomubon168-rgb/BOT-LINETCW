@@ -12,6 +12,7 @@ import { getBotData } from "@/lib/data";
 import { getHistory, pushHistory } from "@/lib/history";
 import { buildPrompt } from "@/lib/prompt";
 import { matchBoxLabel } from "@/lib/image-match";
+import { chosenZone, needsZoneAsk, ZONE_ASK_REPLY, ZONE_BRANCHES } from "@/lib/kantharalak";
 import {
   imagePriceEnabled,
   isBareCashCut,
@@ -163,6 +164,15 @@ async function handleEvent(ev: WebhookEvent, baseUrl: string) {
     return;
   }
 
+  // ตัดของสาขากันทรลักษ์โดยไม่บอกโซน → ถามโซนก่อน
+  if (needsZoneAsk(text, getHistory(userId))) {
+    console.log(JSON.stringify({ intent: "product_ask", topic: "kantharalak_zone", by: "code" }));
+    await reply(token, userId, ZONE_ASK_REPLY);
+    pushHistory(userId, "user", text);
+    pushHistory(userId, "admin", ZONE_ASK_REPLY);
+    return;
+  }
+
   const data = await getBotData();
   if (!data) {
     // ระบบขัดข้อง → ไม่ตอบ บันทึกลงชีทอย่างเดียว (ไม่ส่งเข้ากลุ่ม)
@@ -182,8 +192,12 @@ async function handleEvent(ev: WebhookEvent, baseUrl: string) {
       sendFinanceQr: payType === "finance",
     };
   } else {
-    const context = buildContext(data, text, history);
-    const answer = await askGemini(buildPrompt(context.text, history, text), data.faq);
+    const zone = chosenZone(text, history);
+    const otherBranch = zone && ZONE_BRANCHES[zone === "event" ? "inside" : "event"];
+    const context = buildContext(data, text, history, otherBranch);
+    // บอก AI ว่าลูกค้าเลือกสาขาไหน (ข้อความจริงอาจมีแค่ "1" หรือ "2")
+    const question = zone ? `${text} (สาขาที่เลือก: ${ZONE_BRANCHES[zone]})` : text;
+    const answer = await askGemini(buildPrompt(context.text, history, question), data.faq);
     // ตรวจกับรายการเดียวกับที่ส่งให้ AI (รวม 3 คลัง หรือเฉพาะพื้นที่ที่ถาม) · เบิกใช้รายการรวมเสมอ
     r =
       answer.intent === "requisition" && context.area
