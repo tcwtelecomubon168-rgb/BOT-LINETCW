@@ -12,8 +12,7 @@ import { buildContext } from "@/lib/context";
 import { getBotData } from "@/lib/data";
 import { getHistory, pushHistory } from "@/lib/history";
 import { buildPrompt } from "@/lib/prompt";
-import { matchBoxLabel } from "@/lib/image-match";
-import { matchSku, matchTac } from "@/lib/sku-match";
+import { findBoxPrice } from "@/lib/box-price";
 import { chosenZone, needsZoneAsk, ZONE_ASK_REPLY, ZONE_BRANCHES } from "@/lib/kantharalak";
 import {
   imagePriceEnabled,
@@ -88,26 +87,22 @@ async function replyFromImage(token: string, userId: string, text: string, image
     return;
   }
   const label = await readBoxLabel(images, !!data.tacs?.length);
-  // เทียบด้วย SKU/เลขรุ่น Apple ก่อน → IMEI 8 หลักแรก → รหัสรุ่น/ชื่อรุ่น
-  const bySku = label
-    ? (matchSku(data.price, data.skus ?? [], label.sku, label) ??
-      matchTac(data.price, data.tacs ?? [], label))
-    : undefined;
-  const match = !label || bySku ? undefined : matchBoxLabel(data.price, label);
-  const row = bySku ? bySku.row : match?.row;
+  const found = label ? findBoxPrice(data, label) : undefined;
+  const row = found?.row;
   console.log(
     JSON.stringify({
       intent: "price_from_image",
       images: images.length,
       label,
       matched: row?.[1],
-      capacityUnread: bySku?.capacityUnread ?? match?.capacityUnread,
-      skuFound: !!bySku,
+      matchedBy: found?.by,
+      capacityUnread: found?.capacityUnread,
+      codeFound: found?.codeFound,
       skuRows: data.skus?.length ?? 0,
       tacRows: data.tacs?.length ?? 0,
     }),
   );
-  const note = bySku?.capacityUnread || match?.capacityUnread
+  const note = found?.capacityUnread
     ? "แอดมินอ่านความจุจากรูปได้ไม่ครบ รบกวนเช็กความจุบนกล่อง หากไม่ตรง แจ้งได้เลยนะคะ"
     : "หากไม่ตรงรุ่น แจ้งได้เลยนะคะ";
   const answer = row
