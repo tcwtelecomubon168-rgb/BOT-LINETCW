@@ -13,7 +13,7 @@ import { getBotData } from "@/lib/data";
 import { getHistory, pushHistory } from "@/lib/history";
 import { buildPrompt } from "@/lib/prompt";
 import { matchBoxLabel } from "@/lib/image-match";
-import { matchSku } from "@/lib/sku-match";
+import { matchSku, matchTac } from "@/lib/sku-match";
 import { chosenZone, needsZoneAsk, ZONE_ASK_REPLY, ZONE_BRANCHES } from "@/lib/kantharalak";
 import {
   imagePriceEnabled,
@@ -82,13 +82,17 @@ async function handoff(
 }
 
 async function replyFromImage(token: string, userId: string, text: string, images: string[]) {
-  const [data, label] = await Promise.all([getBotData(), readBoxLabel(images)]);
+  const data = await getBotData();
   if (!data) {
     await handoff(userId, text, "sheet_error");
     return;
   }
-  // เทียบด้วย SKU ก่อน · ไม่มี SKU ในตารางจึงใช้รหัสรุ่น/ชื่อรุ่น
-  const bySku = label ? matchSku(data.price, data.skus ?? [], label.sku, label) : undefined;
+  const label = await readBoxLabel(images, !!data.tacs?.length);
+  // เทียบด้วย SKU/เลขรุ่น Apple ก่อน → IMEI 8 หลักแรก → รหัสรุ่น/ชื่อรุ่น
+  const bySku = label
+    ? (matchSku(data.price, data.skus ?? [], label.sku, label) ??
+      matchTac(data.price, data.tacs ?? [], label))
+    : undefined;
   const match = !label || bySku ? undefined : matchBoxLabel(data.price, label);
   const row = bySku ? bySku.row : match?.row;
   console.log(
@@ -97,12 +101,13 @@ async function replyFromImage(token: string, userId: string, text: string, image
       images: images.length,
       label,
       matched: row?.[1],
-      capacityUnread: match?.capacityUnread,
+      capacityUnread: bySku?.capacityUnread ?? match?.capacityUnread,
       skuFound: !!bySku,
       skuRows: data.skus?.length ?? 0,
+      tacRows: data.tacs?.length ?? 0,
     }),
   );
-  const note = match?.capacityUnread
+  const note = bySku?.capacityUnread || match?.capacityUnread
     ? "แอดมินอ่านความจุจากรูปได้ไม่ครบ รบกวนเช็กความจุบนกล่อง หากไม่ตรง แจ้งได้เลยนะคะ"
     : "หากไม่ตรงรุ่น แจ้งได้เลยนะคะ";
   const answer = row

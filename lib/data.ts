@@ -6,6 +6,7 @@ export type BotData = {
   warehouseStock: string[]; // ชื่อสินค้าที่ 3 คลังรวมกันมีของ
   warehouses?: Record<string, string[]>; // ชื่อสินค้าที่มีของ แยกตามพื้นที่ (Code.gs รุ่นใหม่)
   skus?: [string, string][]; // [SKU, ชื่อสินค้า] จากแท็บ "รหัสสินค้า" (ไม่บังคับ)
+  tacs?: [string, string][]; // [IMEI 8 หลักแรก, ชื่อสินค้า] จากแท็บ "รหัส IMEI" (ไม่บังคับ)
   problems: string[];
 };
 

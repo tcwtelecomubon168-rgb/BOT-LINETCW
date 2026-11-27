@@ -6,6 +6,7 @@ export interface BoxLabel {
   model?: string;
   model_code?: string;
   sku?: string;
+  tacs?: string[]; // 8 หลักแรกของ IMEI
   ram_gb?: number;
   storage_gb?: number;
   network?: string;
@@ -18,7 +19,7 @@ type Spec = { key: string; ram?: number; storage?: number; network?: "5g" | "4g"
 const IGNORE =
   /apple|samsung|galaxy|oppo|vivo|realme|honor|xiaomi|redmi|infinix|tecno|zte|nubia|benco|nokia|tcl|new product|dualsim|wi-?fi/g;
 
-const brandOf = (s: string) => {
+export const brandOf =(s: string) => {
   const t = s.toLowerCase().replace(/\s+/g, "");
   if (/apple|iphone|ipad/.test(t)) return "apple";
   if (/xiaomi|redmi|poco/.test(t)) return "xiaomi";

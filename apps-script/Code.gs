@@ -14,6 +14,7 @@ const SHEET_NAMES = {
   warehouses: ['สต๊อกคลังอุบล', 'สต๊อกคลังสุรินทร์', 'สต๊อกคลังร้อยเอ็ด'],
   handoff: 'รอติดต่อกลับ',
   sku: 'รหัสสินค้า', // ไม่บังคับ: หัวคอลัมน์ SKU, ชื่อสินค้า
+  tac: 'รหัส IMEI', // ไม่บังคับ: หัวคอลัมน์ TAC (IMEI 8 หลักแรก), ชื่อสินค้า
 };
 
 const REASON = {
@@ -103,6 +104,7 @@ function buildData_() {
     warehouseStock: warehouse.all,
     warehouses: warehouse.byArea,
     skus: parseSkus_(problems),
+    tacs: parseTacs_(problems),
     problems: problems,
   };
 }
@@ -123,6 +125,32 @@ function parseSkus_(problems) {
     const c = trim_(grid[r][code]);
     const p = trim_(grid[r][product]);
     if (c && p) out.push([c, p]);
+  }
+  return out;
+}
+
+// แท็บ "รหัส IMEI" → [TAC, ชื่อสินค้า] · ส่งเฉพาะเลข 8 หลัก (เลขเต็มไม่ส่งออก)
+function parseTacs_(problems) {
+  const name = SHEET_NAMES.tac;
+  const sheet = SpreadsheetApp.getActive().getSheetByName(name);
+  if (!sheet) return [];
+  const grid = sheet.getDataRange().getDisplayValues();
+  if (!grid.length) return [];
+  const head = grid[0].map(trim_);
+  const code = colIndex_(head, 'TAC', name, problems);
+  const product = colIndex_(head, 'ชื่อสินค้า', name, problems);
+  if (code < 0 || product < 0) return [];
+  const out = [];
+  for (let r = 1; r < grid.length; r++) {
+    let t = trim_(grid[r][code]).replace(/[\s-]/g, '');
+    const p = trim_(grid[r][product]);
+    if (!t || !p) continue;
+    if (/^\d{7}$/.test(t)) t = '0' + t; // ชีทตัดเลข 0 ตัวหน้าออก
+    if (!/^\d{8}$/.test(t)) {
+      problems.push(name + ': แถว ' + (r + 1) + ' TAC ต้องเป็นเลข 8 หลัก');
+      continue;
+    }
+    out.push([t, p]);
   }
   return out;
 }
