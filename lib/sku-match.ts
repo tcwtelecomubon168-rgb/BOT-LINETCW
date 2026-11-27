@@ -127,6 +127,20 @@ export function matchTac(
   return names.length ? matchModelOnly(price, names, label) : undefined;
 }
 
+// Serial ตรงกับเครื่องเดียว จึงใช้ความจุจากชื่อสินค้าในแถวนั้นได้
+export function matchSerial(
+  price: PriceRow[],
+  table: SkuRow[],
+  serial: string,
+): SkuMatch | undefined {
+  const names = table.filter(([code]) => code === serial).map(([, name]) => name);
+  if (!names.length) return undefined;
+  const specs = names.map((n) => parseSpec(n));
+  // เลขเดียวกันแต่ความจุต่างกัน = ข้อมูลขัดกัน
+  if (new Set(specs.map((s) => `${s.ram}|${s.storage}`)).size !== 1) return {};
+  return matchModelOnly(price, names, { ram_gb: specs[0].ram, storage_gb: specs[0].storage });
+}
+
 // undefined = ไม่มีรหัสในตาราง (ให้ใช้วิธีเทียบอื่นต่อ) · row ว่าง = พบรหัสแต่ไม่แน่ใจ ให้ถามกลับ
 export function matchSku(
   price: PriceRow[],

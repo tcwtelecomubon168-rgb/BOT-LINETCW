@@ -4,7 +4,7 @@ import { CASH_PRICE_ASK_REPLY } from "./cash-price";
 import type { BotData } from "./data";
 import { tacsFrom } from "./imei";
 import { parseSpec, ramFits } from "./image-match";
-import { matchTac } from "./sku-match";
+import { matchSerial, matchTac, type SkuMatch } from "./sku-match";
 
 type PriceRow = BotData["price"][number];
 
@@ -25,44 +25,50 @@ export function parseImeiText(text: string): { tacs: string[]; cashCut: boolean 
 
 const priceLine = (row: PriceRow) => `${row[1]} ราคาตัดสด ${row[2]} บาท ค่ะ 😊`;
 
-export function imeiPriceReply(
-  data: BotData,
-  tacs: string[],
-): { reply: string; row?: PriceRow; options?: PriceRow[] } {
-  const found = matchTac(data.price, data.tacs ?? [], { tacs });
+type CodeReply = { reply: string; row?: PriceRow; options?: PriceRow[] };
+
+// เลขที่ลูกค้าพิมพ์มา: IMEI (เหลือ 8 หลักแรก) หรือ Serial
+export type TypedCode = { tacs: string[] } | { serial: string };
+
+function toReply(source: string, found: SkuMatch | undefined): CodeReply {
   if (found?.row) {
     return {
       row: found.row,
-      reply: `จาก IMEI: ${priceLine(found.row)}
+      reply: `จาก ${source}: ${priceLine(found.row)}
 รบกวนเช็กรุ่นและความจุบนกล่อง หากไม่ตรง แจ้งได้เลยนะคะ`,
     };
   }
   if (found?.options && found.options.length <= 5) {
     return {
       options: found.options,
-      reply: `จาก IMEI รุ่นนี้มีหลายความจุค่ะ คุณลูกค้าต้องการความจุไหนคะ
+      reply: `จาก ${source} รุ่นนี้มีหลายความจุค่ะ คุณลูกค้าต้องการความจุไหนคะ
 ${found.options.map((r) => `- ${r[1]}`).join("\n")}`,
     };
   }
   return { reply: CASH_PRICE_ASK_REPLY };
 }
 
+export const codePriceReply = (data: BotData, code: TypedCode): CodeReply =>
+  "serial" in code
+    ? toReply("Serial", matchSerial(data.price, data.serials ?? [], code.serial))
+    : toReply("IMEI", matchTac(data.price, data.tacs ?? [], { tacs: code.tacs }));
+
 // ของที่รอข้อความถัดไป (Vercel เริ่มเครื่องใหม่แล้วหาย → ข้อความถัดไปเข้าขั้นตอนปกติ)
 const WAIT_MS = 5 * 60_000;
 
-// ส่งเลขมาก่อน ยังไม่พิมพ์ "ตัดสด" → จำแค่ 8 หลักแรกไว้ 5 นาที
-const waitingTacs = new Map<string, { tacs: string[]; at: number }>();
+// ส่งเลขมาก่อน ยังไม่พิมพ์ "ตัดสด" → จำไว้ในหน่วยความจำ 5 นาที (IMEI เหลือ 8 หลักแรก)
+const waitingCodes = new Map<string, { code: TypedCode; at: number }>();
 
-export function rememberTacs(userId: string, tacs: string[]): void {
-  for (const [k, v] of Array.from(waitingTacs)) if (Date.now() - v.at > WAIT_MS) waitingTacs.delete(k);
-  waitingTacs.set(userId, { tacs, at: Date.now() });
+export function rememberCode(userId: string, code: TypedCode): void {
+  for (const [k, v] of Array.from(waitingCodes)) if (Date.now() - v.at > WAIT_MS) waitingCodes.delete(k);
+  waitingCodes.set(userId, { code, at: Date.now() });
 }
 
 // ดึงแล้วลบ → ใช้ครั้งเดียว
-export function takeTacs(userId: string): string[] | undefined {
-  const w = waitingTacs.get(userId);
-  waitingTacs.delete(userId);
-  return w && Date.now() - w.at <= WAIT_MS ? w.tacs : undefined;
+export function takeCode(userId: string): TypedCode | undefined {
+  const w = waitingCodes.get(userId);
+  waitingCodes.delete(userId);
+  return w && Date.now() - w.at <= WAIT_MS ? w.code : undefined;
 }
 
 // ตัวเลือกความจุที่ถามไว้

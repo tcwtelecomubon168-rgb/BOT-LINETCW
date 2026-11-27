@@ -15,14 +15,16 @@ import { buildPrompt } from "@/lib/prompt";
 import { findBoxPrice } from "@/lib/box-price";
 import {
   capacityPriceReply,
+  codePriceReply,
   IMEI_INVALID_REPLY,
-  imeiPriceReply,
   parseImeiText,
-  rememberTacs,
+  rememberCode,
   setCapacityOptions,
   takeCapacityAnswer,
-  takeTacs,
+  takeCode,
+  type TypedCode,
 } from "@/lib/imei-text";
+import { parseSerialText } from "@/lib/serial";
 import { chosenZone, needsZoneAsk, ZONE_ASK_REPLY, ZONE_BRANCHES } from "@/lib/kantharalak";
 import {
   imagePriceEnabled,
@@ -125,22 +127,24 @@ ${note}`
   pushHistory(userId, "admin", answer);
 }
 
-async function replyFromImei(token: string, userId: string, tacs: string[]) {
-  // ข้อความที่บันทึกใช้คำแทน ห้ามใช้ข้อความจริงเพราะมีเลข IMEI
-  const asked = "ตัดสด (ส่ง IMEI)";
+async function replyFromCode(token: string, userId: string, code: TypedCode) {
+  // ข้อความที่บันทึกใช้คำแทน ห้ามใช้ข้อความจริงเพราะมีเลข IMEI/Serial
+  const kind = "serial" in code ? "Serial" : "IMEI";
+  const asked = `ตัดสด (ส่ง ${kind})`;
   const data = await getBotData();
   if (!data) {
     await handoff(userId, asked, "sheet_error");
     return;
   }
-  const result = imeiPriceReply(data, tacs);
+  const result = codePriceReply(data, code);
   console.log(
     JSON.stringify({
-      intent: "price_from_imei",
-      tacs,
+      intent: `price_from_${kind.toLowerCase()}`,
+      tacs: "tacs" in code ? code.tacs : undefined, // ห้าม log เลข Serial
       matched: result.row?.[1],
       options: result.options?.length,
       tacRows: data.tacs?.length ?? 0,
+      serialRows: data.serials?.length ?? 0,
     }),
   );
   if (result.options) setCapacityOptions(userId, result.options);
@@ -182,7 +186,7 @@ async function handleEvent(ev: WebhookEvent, baseUrl: string) {
     // รูป: จำแค่ messageId เผื่อมีคำว่า "ตัดสด" ตามมา (ต้องจำก่อน await ใด ๆ)
     if (ev.message.type === "image" && imagePriceEnabled(userId)) {
       rememberImage(userId, ev.message.id);
-      takeTacs(userId); // ส่งรูปใหม่ → ยกเลิกเลข IMEI ที่รออยู่
+      takeCode(userId); // ส่งรูปใหม่ → ยกเลิกเลข IMEI/Serial ที่รออยู่
     }
     console.log("skip non-text", ev.message.type, ev.message.type === "image" ? userId : "");
     return;
@@ -190,28 +194,35 @@ async function handleEvent(ev: WebhookEvent, baseUrl: string) {
 
   const text = ev.message.text;
 
-  // พิมพ์เลข IMEI + "ตัดสด" → โค้ดค้นราคาเอง (ต้องดักก่อนขั้นตอนอื่น ไม่ให้เลขไปถึง AI)
+  // พิมพ์เลข IMEI/Serial + "ตัดสด" → โค้ดค้นราคาเอง (ต้องดักก่อนขั้นตอนอื่น ไม่ให้เลขไปถึง AI)
   const imei = parseImeiText(text);
-  if (imei) {
-    if (!imei.cashCut) {
+  const typed = imei ?? parseSerialText(text);
+  if (typed) {
+    const code: TypedCode | undefined =
+      "serial" in typed
+        ? { serial: typed.serial }
+        : typed.tacs.length
+          ? { tacs: typed.tacs }
+          : undefined; // เลข IMEI ผิด
+    if (!typed.cashCut) {
       // มีแต่เลข → ยังไม่ตอบ รอคำว่า "ตัดสด"
-      if (imei.tacs.length) rememberTacs(userId, imei.tacs);
-      console.log("imei without cash-cut word: waiting");
-    } else if (imei.tacs.length) {
-      takeTacs(userId);
-      await replyFromImei(token, userId, imei.tacs);
+      if (code) rememberCode(userId, code);
+      console.log("code without cash-cut word: waiting");
+    } else if (code) {
+      takeCode(userId);
+      await replyFromCode(token, userId, code);
     } else {
       await reply(token, userId, IMEI_INVALID_REPLY);
     }
     return;
   }
 
-  // ส่ง IMEI มาก่อน แล้วพิมพ์ "ตัดสด" ตามมา
+  // ส่ง IMEI/Serial มาก่อน แล้วพิมพ์ "ตัดสด" ตามมา
   if (isBareCashCut(text, getHistory(userId))) {
-    const tacs = takeTacs(userId);
-    if (tacs) {
-      takeImages(userId); // ใช้ IMEI แล้ว ไม่ใช้รูปค้างกับข้อความถัดไป
-      await replyFromImei(token, userId, tacs);
+    const code = takeCode(userId);
+    if (code) {
+      takeImages(userId); // ใช้เลขแล้ว ไม่ใช้รูปค้างกับข้อความถัดไป
+      await replyFromCode(token, userId, code);
       return;
     }
   }

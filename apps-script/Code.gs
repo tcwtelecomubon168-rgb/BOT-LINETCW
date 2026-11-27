@@ -14,7 +14,7 @@ const SHEET_NAMES = {
   warehouses: ['สต๊อกคลังอุบล', 'สต๊อกคลังสุรินทร์', 'สต๊อกคลังร้อยเอ็ด'],
   handoff: 'รอติดต่อกลับ',
   sku: 'รหัสสินค้า', // ไม่บังคับ: หัวคอลัมน์ SKU, ชื่อสินค้า
-  tac: 'รหัส IMEI', // ไม่บังคับ: หัวคอลัมน์ TAC (IMEI 8 หลักแรก), ชื่อสินค้า
+  tac: 'รหัส IMEI', // ไม่บังคับ: หัวคอลัมน์ TAC (IMEI หรือ Serial สินค้า Apple), ชื่อสินค้า
 };
 
 const REASON = {
@@ -96,6 +96,7 @@ function handoffSheet_() {
 function buildData_() {
   const problems = [];
   const warehouse = parseWarehouseStock_(problems);
+  const codes = parseTacs_(problems);
   return {
     updatedAt: new Date().toISOString(),
     faq: parseFaq_(grid_(SHEET_NAMES.faq, problems), problems),
@@ -104,7 +105,8 @@ function buildData_() {
     warehouseStock: warehouse.all,
     warehouses: warehouse.byArea,
     skus: parseSkus_(problems),
-    tacs: parseTacs_(problems),
+    tacs: codes.tacs,
+    serials: codes.serials,
     problems: problems,
   };
 }
@@ -129,24 +131,41 @@ function parseSkus_(problems) {
   return out;
 }
 
-// แท็บ "รหัส IMEI" → [TAC, ชื่อสินค้า] · ส่งเฉพาะเลข 8 หลัก (เลขเต็มไม่ส่งออก)
+// Serial ของสินค้า Apple ต้องส่งเต็มเลข · ตัดตัว S จากบาร์โค้ดออก (ต้องตรงกับ lib/serial.ts)
+function serial_(value, product) {
+  if (!/^\s*(apple|ipad|iphone)/i.test(product)) return '';
+  let s = value.toUpperCase();
+  if (s.length === 11 && s.charAt(0) === 'S') s = s.slice(1);
+  return /^(?=.*[A-Z])(?=.*\d)[A-Z0-9]{10,12}$/.test(s) ? s : '';
+}
+
+// แท็บ "รหัส IMEI" → tacs: [IMEI 8 หลักแรก, ชื่อสินค้า] (IMEI เต็มไม่ส่งออก)
+//                  serials: [Serial สินค้า Apple, ชื่อสินค้า]
 function parseTacs_(problems) {
+  const none = { tacs: [], serials: [] };
   const name = SHEET_NAMES.tac;
   const sheet = SpreadsheetApp.getActive().getSheetByName(name);
-  if (!sheet) return [];
+  if (!sheet) return none;
   const grid = sheet.getDataRange().getDisplayValues();
-  if (!grid.length) return [];
+  if (!grid.length) return none;
   const head = grid[0].map(trim_);
   const code = colIndex_(head, 'TAC', name, problems);
   const product = colIndex_(head, 'ชื่อสินค้า', name, problems);
-  if (code < 0 || product < 0) return [];
+  if (code < 0 || product < 0) return none;
   const out = [];
+  const serials = [];
   const seen = {};
   const bad = []; // เก็บแค่เลขแถว ไม่ส่งค่าในช่องออกไป
   for (let r = 1; r < grid.length; r++) {
     let t = trim_(grid[r][code]).replace(/[\s-]/g, '');
     const p = trim_(grid[r][product]);
     if (!t || !p) continue;
+    const s = serial_(t, p);
+    if (s) {
+      if (!seen[s + '|' + p]) serials.push([s, p]);
+      seen[s + '|' + p] = true;
+      continue;
+    }
     if (/^\d{15}$/.test(t)) t = t.slice(0, 8); // IMEI เต็ม: ส่งออกแค่ 8 หลักแรก
     if (/^\d{7}$/.test(t)) t = '0' + t; // ชีทตัดเลข 0 ตัวหน้าออก
     if (!/^\d{8}$/.test(t)) {
@@ -159,10 +178,10 @@ function parseTacs_(problems) {
   }
   // สรุปเป็นข้อความเดียว (แจ้งทีละแถวทำให้ข้อมูลใหญ่จนบอทดึงไม่ทัน)
   if (bad.length) {
-    problems.push(name + ': TAC ไม่ใช่เลข 8 หรือ 15 หลัก ' + bad.length +
+    problems.push(name + ': ไม่ใช่ IMEI หรือ Serial สินค้า Apple ' + bad.length +
       ' แถว เช่น แถว ' + bad.slice(0, 5).join(', '));
   }
-  return out;
+  return { tacs: out, serials: serials };
 }
 
 function grid_(name, problems) {
