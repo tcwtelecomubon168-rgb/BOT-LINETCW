@@ -11,7 +11,7 @@ export type BotData = {
 };
 
 const TTL_MS = 60_000;
-const TIMEOUT_MS = 6000;
+const TIMEOUT_MS = 10_000; // Apps Script ใช้เวลาราว 5-8 วินาที
 let cache: { data: BotData; at: number } | null = null;
 
 function valid(d: unknown): d is BotData {

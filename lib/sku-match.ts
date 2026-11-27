@@ -32,9 +32,9 @@ function beforeColor(name: string): string | undefined {
 }
 
 function priceRowsFor(price: PriceRow[], name: string): PriceRow[] {
-  // ร้านยืนยัน: รุ่น "5G T" และ Special Edition ราคาเท่ารุ่นปกติ
-  // (คำว่า Special Edition อยู่หลังความจุ จึงถูกตัดไปพร้อมสี)
-  const head = beforeColor(name.replace(/(\b5g)\s+t\b/i, "$1"));
+  // ร้านยืนยัน: Special Edition ราคาเท่ารุ่นปกติ (อยู่หลังความจุ จึงถูกตัดไปพร้อมสี)
+  // รุ่นที่มีตัว T จัดการใน parseSpec
+  const head = beforeColor(name);
   if (!head) return [];
   const brand = head.trim().split(/\s+/)[0].toLowerCase();
   const want = parseSpec(head);
@@ -57,9 +57,10 @@ export type SkuMatch = { row?: PriceRow; capacityUnread?: boolean; conflict?: bo
 // รหัสที่บอกได้แค่รุ่น (เลขรุ่น Apple, TAC): ไม่ใช้ความจุที่เขียนในตาราง ต้องอ่านจากกล่อง
 function matchModelOnly(price: PriceRow[], names: string[], label: BoxLabel): SkuMatch {
   const models = names.map((n) => {
-    const clean = n.replace(/(\b5g)\s+t\b/i, "$1");
-    const { key, network } = parseSpec(beforeColor(clean) ?? clean);
-    return { brand: brandOf(n), key, is5g: network === "5g" };
+    // ไม่มีความจุในชื่อ (ปุ่มกด) → ตัดสีที่อยู่หลังขนาดจอ เช่น G6 4G 2.4" BLACK
+    const model = beforeColor(n) ?? n.match(/^.*?\d(?:\.\d+)?\s*(?:"|-?inch)/i)?.[0] ?? n;
+    // บางชื่อเขียน (5G) ไว้หลังสี จึงดูจากชื่อเต็ม
+    return { brand: brandOf(n), key: parseSpec(model).key, is5g: /(?<![a-z0-9])5g(?![a-z0-9])/i.test(n) };
   });
   // รหัสชี้ไปหลายรุ่น = ข้อมูลขัดกัน
   if (new Set(models.map((m) => `${m.key}|${m.is5g}`)).size !== 1 || !models[0].key) return {};

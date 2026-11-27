@@ -33,7 +33,10 @@ export function parseSpec(name: string): Spec {
   let t = name
     .toLowerCase()
     .replace(/\d+(\.\d+)?\s*(-?\s*inch|")/g, " ") // ขนาดจอ
-    .replace(/\(\s*(\d\.\d|20\d\d)\s*\)/g, " "); // (2.8) (2024)
+    .replace(/\(\s*(\d\.\d|20\d\d)\s*\)/g, " ") // (2.8) (2024)
+    // ร้านยืนยัน: รุ่นที่มีตัว T เดี่ยว (5G T, LTE T, Y05 T) ราคาเท่ารุ่นปกติ · "T20", "15T" ไม่ตัด
+    .replace(/\s+t(?=\s*\(|\s+\d|\s*$)/g, " ")
+    .replace(/\s*(?<![a-z])plus(?![a-z])/g, "+"); // "Pro Plus" = "Pro+"
 
   let ram: number | undefined;
   let storage: number | undefined;
