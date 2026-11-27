@@ -13,6 +13,16 @@ import { getBotData } from "@/lib/data";
 import { getHistory, pushHistory } from "@/lib/history";
 import { buildPrompt } from "@/lib/prompt";
 import { findBoxPrice } from "@/lib/box-price";
+import {
+  capacityPriceReply,
+  IMEI_INVALID_REPLY,
+  imeiPriceReply,
+  parseImeiText,
+  rememberTacs,
+  setCapacityOptions,
+  takeCapacityAnswer,
+  takeTacs,
+} from "@/lib/imei-text";
 import { chosenZone, needsZoneAsk, ZONE_ASK_REPLY, ZONE_BRANCHES } from "@/lib/kantharalak";
 import {
   imagePriceEnabled,
@@ -115,6 +125,30 @@ ${note}`
   pushHistory(userId, "admin", answer);
 }
 
+async function replyFromImei(token: string, userId: string, tacs: string[]) {
+  // ข้อความที่บันทึกใช้คำแทน ห้ามใช้ข้อความจริงเพราะมีเลข IMEI
+  const asked = "ตัดสด (ส่ง IMEI)";
+  const data = await getBotData();
+  if (!data) {
+    await handoff(userId, asked, "sheet_error");
+    return;
+  }
+  const result = imeiPriceReply(data, tacs);
+  console.log(
+    JSON.stringify({
+      intent: "price_from_imei",
+      tacs,
+      matched: result.row?.[1],
+      options: result.options?.length,
+      tacRows: data.tacs?.length ?? 0,
+    }),
+  );
+  if (result.options) setCapacityOptions(userId, result.options);
+  await reply(token, userId, result.reply);
+  pushHistory(userId, "user", result.row ? `ตัดสด ${result.row[1]}` : asked);
+  pushHistory(userId, "admin", result.reply);
+}
+
 async function handleEvent(ev: WebhookEvent, baseUrl: string) {
   if (ev.type === "join") {
     const src = ev.source;
@@ -148,12 +182,51 @@ async function handleEvent(ev: WebhookEvent, baseUrl: string) {
     // รูป: จำแค่ messageId เผื่อมีคำว่า "ตัดสด" ตามมา (ต้องจำก่อน await ใด ๆ)
     if (ev.message.type === "image" && imagePriceEnabled(userId)) {
       rememberImage(userId, ev.message.id);
+      takeTacs(userId); // ส่งรูปใหม่ → ยกเลิกเลข IMEI ที่รออยู่
     }
     console.log("skip non-text", ev.message.type, ev.message.type === "image" ? userId : "");
     return;
   }
 
   const text = ev.message.text;
+
+  // พิมพ์เลข IMEI + "ตัดสด" → โค้ดค้นราคาเอง (ต้องดักก่อนขั้นตอนอื่น ไม่ให้เลขไปถึง AI)
+  const imei = parseImeiText(text);
+  if (imei) {
+    if (!imei.cashCut) {
+      // มีแต่เลข → ยังไม่ตอบ รอคำว่า "ตัดสด"
+      if (imei.tacs.length) rememberTacs(userId, imei.tacs);
+      console.log("imei without cash-cut word: waiting");
+    } else if (imei.tacs.length) {
+      takeTacs(userId);
+      await replyFromImei(token, userId, imei.tacs);
+    } else {
+      await reply(token, userId, IMEI_INVALID_REPLY);
+    }
+    return;
+  }
+
+  // ส่ง IMEI มาก่อน แล้วพิมพ์ "ตัดสด" ตามมา
+  if (isBareCashCut(text, getHistory(userId))) {
+    const tacs = takeTacs(userId);
+    if (tacs) {
+      takeImages(userId); // ใช้ IMEI แล้ว ไม่ใช้รูปค้างกับข้อความถัดไป
+      await replyFromImei(token, userId, tacs);
+      return;
+    }
+  }
+
+  // ตอบความจุที่ถามไว้หลังส่ง IMEI
+  const picked = takeCapacityAnswer(userId, text);
+  if (picked) {
+    const answer = capacityPriceReply(picked);
+    console.log(JSON.stringify({ intent: "price_from_imei", capacityPicked: picked[1] }));
+    await reply(token, userId, answer);
+    pushHistory(userId, "user", `ตัดสด ${picked[1]}`);
+    pushHistory(userId, "admin", answer);
+    return;
+  }
+
   // ขอใบราคา → ตอบได้ทันทีโดยไม่ต้องใช้ข้อมูลชีทหรือ AI และไม่แจ้งกลุ่ม
   if (asksPriceList(text)) {
     console.log(JSON.stringify({ intent: "price_list", by: "code" }));

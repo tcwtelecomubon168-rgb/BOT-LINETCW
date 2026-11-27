@@ -52,7 +52,12 @@ function priceRowsFor(price: PriceRow[], name: string): PriceRow[] {
   return found.map((f) => f.row);
 }
 
-export type SkuMatch = { row?: PriceRow; capacityUnread?: boolean; conflict?: boolean };
+export type SkuMatch = {
+  row?: PriceRow;
+  options?: PriceRow[]; // รุ่นเดียวแต่หลายความจุ ใช้ถามลูกค้า
+  capacityUnread?: boolean;
+  conflict?: boolean;
+};
 
 // รหัสที่บอกได้แค่รุ่น (เลขรุ่น Apple, TAC): ไม่ใช้ความจุที่เขียนในตาราง ต้องอ่านจากกล่อง
 function matchModelOnly(price: PriceRow[], names: string[], label: BoxLabel): SkuMatch {
@@ -79,7 +84,7 @@ function matchModelOnly(price: PriceRow[], names: string[], label: BoxLabel): Sk
       (!label.storage_gb || !spec.storage || spec.storage === label.storage_gb) &&
       (!label.ram_gb || !spec.ram || ramFits(spec, label.ram_gb)),
   );
-  if (found.length !== 1) return {};
+  if (found.length !== 1) return found.length ? { options: found.map((f) => f.row) } : {};
   const { row, spec } = found[0];
   // ยี่ห้อที่อ่านจากกล่องต้องไม่ขัดกับแถวที่ได้
   if (label.brand && brandOf(label.brand) !== brandOf(row[0])) return {};
