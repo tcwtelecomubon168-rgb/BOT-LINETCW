@@ -11,6 +11,14 @@ import { buildContext } from "@/lib/context";
 import { getBotData } from "@/lib/data";
 import { getHistory, pushHistory } from "@/lib/history";
 import { buildPrompt } from "@/lib/prompt";
+import { matchBoxLabel } from "@/lib/image-match";
+import {
+  imagePriceEnabled,
+  isBareCashCut,
+  readBoxLabel,
+  rememberImage,
+  takeImages,
+} from "@/lib/image-price";
 
 type WebhookEvent = webhook.Event;
 
@@ -70,6 +78,26 @@ async function handoff(
   }
 }
 
+async function replyFromImage(token: string, userId: string, text: string, images: string[]) {
+  const [data, label] = await Promise.all([getBotData(), readBoxLabel(images)]);
+  if (!data) {
+    await handoff(userId, text, "sheet_error");
+    return;
+  }
+  const row = label ? matchBoxLabel(data.price, label) : undefined;
+  console.log(
+    JSON.stringify({ intent: "price_from_image", images: images.length, label, matched: row?.[1] }),
+  );
+  const answer = row
+    ? `จากรูป: ${row[1]} ราคาตัดสด ${row[2]} บาท ค่ะ 😊
+หากไม่ตรงรุ่น แจ้งได้เลยนะคะ`
+    : CASH_PRICE_ASK_REPLY;
+  await reply(token, userId, answer);
+  // ใส่ชื่อรุ่นในประวัติ เพื่อให้คำถามต่อเนื่องรู้ว่าคุยรุ่นไหน
+  pushHistory(userId, "user", row ? `ตัดสด ${row[1]}` : text);
+  pushHistory(userId, "admin", answer);
+}
+
 async function handleEvent(ev: WebhookEvent, baseUrl: string) {
   if (ev.type === "join") {
     const src = ev.source;
@@ -100,7 +128,11 @@ async function handleEvent(ev: WebhookEvent, baseUrl: string) {
 
   // รูป/สติกเกอร์/วิดีโอ/ไฟล์/เสียง/ตำแหน่ง → ไม่ตอบ ไม่แจ้ง
   if (ev.message.type !== "text") {
-    console.log("skip non-text", ev.message.type);
+    // รูป: จำแค่ messageId เผื่อมีคำว่า "ตัดสด" ตามมา (ต้องจำก่อน await ใด ๆ)
+    if (ev.message.type === "image" && imagePriceEnabled(userId)) {
+      rememberImage(userId, ev.message.id);
+    }
+    console.log("skip non-text", ev.message.type, ev.message.type === "image" ? userId : "");
     return;
   }
 
@@ -112,6 +144,15 @@ async function handleEvent(ev: WebhookEvent, baseUrl: string) {
     pushHistory(userId, "user", text);
     pushHistory(userId, "admin", PRICE_LIST_REPLY);
     return;
+  }
+
+  // ส่งรูปกล่องแล้วพิมพ์ "ตัดสด" → อ่านฉลาก เทียบชีทราคา
+  if (imagePriceEnabled(userId) && isBareCashCut(text, getHistory(userId))) {
+    const images = takeImages(userId);
+    if (images.length) {
+      await replyFromImage(token, userId, text, images);
+      return;
+    }
   }
 
   if (asksCashPriceWithoutModel(text, getHistory(userId))) {
