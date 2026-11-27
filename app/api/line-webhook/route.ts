@@ -86,13 +86,23 @@ async function replyFromImage(token: string, userId: string, text: string, image
     await handoff(userId, text, "sheet_error");
     return;
   }
-  const row = label ? matchBoxLabel(data.price, label) : undefined;
+  const match = label ? matchBoxLabel(data.price, label) : undefined;
+  const row = match?.row;
   console.log(
-    JSON.stringify({ intent: "price_from_image", images: images.length, label, matched: row?.[1] }),
+    JSON.stringify({
+      intent: "price_from_image",
+      images: images.length,
+      label,
+      matched: row?.[1],
+      capacityUnread: match?.capacityUnread,
+    }),
   );
+  const note = match?.capacityUnread
+    ? "แอดมินอ่านความจุจากรูปได้ไม่ครบ รบกวนเช็กความจุบนกล่อง หากไม่ตรง แจ้งได้เลยนะคะ"
+    : "หากไม่ตรงรุ่น แจ้งได้เลยนะคะ";
   const answer = row
     ? `จากรูป: ${row[1]} ราคาตัดสด ${row[2]} บาท ค่ะ 😊
-หากไม่ตรงรุ่น แจ้งได้เลยนะคะ`
+${note}`
     : CASH_PRICE_ASK_REPLY;
   await reply(token, userId, answer);
   // ใส่ชื่อรุ่นในประวัติ เพื่อให้คำถามต่อเนื่องรู้ว่าคุยรุ่นไหน
@@ -155,6 +165,7 @@ async function handleEvent(ev: WebhookEvent, baseUrl: string) {
       await replyFromImage(token, userId, text, images);
       return;
     }
+    console.log("price_from_image: no recent image");
   }
 
   if (asksCashPriceWithoutModel(text, getHistory(userId))) {

@@ -81,8 +81,13 @@ export function parseSpec(name: string): Spec {
   return { key, ram, storage, network };
 }
 
-// คืนแถวราคาเมื่อ "ตรงรายการเดียว" เท่านั้น
-export function matchBoxLabel(price: PriceRow[], label: BoxLabel): PriceRow | undefined {
+export type BoxMatch = {
+  row: PriceRow;
+  capacityUnread: boolean; // true = อ่านความจุจากรูปได้ไม่ครบ แต่ชีทมีรุ่นนี้รายการเดียว
+};
+
+// คืนผลเมื่อ "ตรงรายการเดียว" เท่านั้น
+export function matchBoxLabel(price: PriceRow[], label: BoxLabel): BoxMatch | undefined {
   if (!label.brand || !label.model) return undefined;
   const brand = brandOf(label.brand);
   const want = parseSpec(label.model);
@@ -91,16 +96,29 @@ export function matchBoxLabel(price: PriceRow[], label: BoxLabel): PriceRow | un
   const storage = label.storage_gb || want.storage;
   const net = parseSpec(`x ${label.network ?? ""}`).network ?? want.network;
 
-  let found = price
+  const sameModel = price
     .map((row) => ({ row, spec: parseSpec(row[1]) }))
     .filter((c) => brandOf(c.row[0]) === brand && c.spec.key === want.key);
 
   // รุ่นที่ในชีทระบุความจุ ต้องอ่านความจุ (และ RAM ถ้าชีทระบุ) จากรูปได้ตรงกัน
-  found = found.filter(
+  let found = sameModel.filter(
     (c) =>
       c.spec.storage === undefined ||
       (c.spec.storage === storage && (c.spec.ram === undefined || c.spec.ram === ram)),
   );
+
+  // ชีทมีรุ่นนี้รายการเดียว และค่าที่อ่านได้ไม่ขัดกัน (แค่อ่านไม่ครบ)
+  let capacityUnread = false;
+  if (!found.length && sameModel.length === 1) {
+    const { spec } = sameModel[0];
+    const missing = !storage || (spec.ram !== undefined && !ram);
+    const conflict = (!!storage && storage !== spec.storage) ||
+      (!!ram && spec.ram !== undefined && ram !== spec.ram);
+    if (missing && !conflict) {
+      found = sameModel;
+      capacityUnread = true;
+    }
+  }
 
   // 4G/5G ขัดกันตัดออก · เหลือหลายรายการเลือกตัวที่ระบุตรง
   if (net) {
@@ -110,5 +128,5 @@ export function matchBoxLabel(price: PriceRow[], label: BoxLabel): PriceRow | un
     else if (found.length > 1) return undefined;
   }
 
-  return found.length === 1 ? found[0].row : undefined;
+  return found.length === 1 ? { row: found[0].row, capacityUnread } : undefined;
 }
