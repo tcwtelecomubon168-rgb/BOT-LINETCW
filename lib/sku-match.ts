@@ -17,9 +17,19 @@ export const findSku = (...texts: (string | undefined)[]): string | undefined =>
   return undefined;
 };
 
+// รูปแบบความจุ: Ram4 Rom64 · 4/64GB, 8+256G · 256GB 8GB · 128GB
+const CAPACITY =
+  /ram\s*\d+(?:\s*\+\s*\d+)?\s*rom\s*\d+\s*(?:gb|tb|g(?![a-z]))?|(\d+)\s*(?:gb|g)?\s*[+/]\s*(\d+)\s*(?:gb|tb|g(?![a-z]))?|\d+\s*(?:gb|tb)(?:\s+\d+\s*gb)?/gi;
+
 // ชื่อสินค้าถึงแค่ความจุ (ส่วนหลังความจุคือสี)
-const beforeColor = (name: string) =>
-  name.match(/^.*?\d+\s*(?:gb|g)?\s*[+/]\s*\d+\s*(?:gb|tb|g(?![a-z]))?/i)?.[0];
+function beforeColor(name: string): string | undefined {
+  for (const m of Array.from(name.matchAll(CAPACITY))) {
+    // "A11+ 5G" หน้าตาเหมือนคู่ความจุ แต่ไม่มีเลขความจุจริง (32 ขึ้นไป หรือหน่วย TB)
+    if (m[1] && Math.max(Number(m[1]), Number(m[2])) < 32 && !/tb/i.test(m[0])) continue;
+    return name.slice(0, (m.index ?? 0) + m[0].length);
+  }
+  return undefined;
+}
 
 function priceRowsFor(price: PriceRow[], name: string): PriceRow[] {
   // ร้านยืนยัน: รุ่น "5G T" และ Special Edition ราคาเท่ารุ่นปกติ
@@ -78,16 +88,24 @@ function matchModelOnly(price: PriceRow[], names: string[], label: BoxLabel): Sk
   return { row, capacityUnread };
 }
 
-// Apple: เลขรุ่นแบบ A3354 ใช้ร่วมกันทุกความจุและสี
+// รหัสโรงงานในแท็บ "รหัสสินค้า" เช่น CPH2819 หรือเลขรุ่น Apple A3354 (ใช้ร่วมกันทุกความจุและสี)
+// ช่องรหัสมีคำอื่นปนได้ เช่น "iPad A3354"
 const APPLE_CODE = /^a[123]\d{3}$/;
 
-function matchApple(price: PriceRow[], skus: SkuRow[], label: BoxLabel): SkuMatch | undefined {
-  const code = label.model_code?.toLowerCase() ?? "";
-  if (!APPLE_CODE.test(code) || (label.brand && !/apple|iphone|ipad/i.test(label.brand))) {
-    return undefined;
-  }
+function matchFactoryCode(
+  price: PriceRow[],
+  skus: SkuRow[],
+  label: BoxLabel,
+): SkuMatch | undefined {
+  const code = label.model_code?.toLowerCase();
+  if (!code) return undefined;
   const names = skus
-    .filter(([c, name]) => c.trim().toLowerCase() === code && /^\s*apple/i.test(name))
+    .filter(
+      ([cell, name]) =>
+        cell.toLowerCase().split(/\s+/).includes(code) &&
+        // เลขแบบ A3354 ใช้เฉพาะสินค้า Apple (กันชนกับรหัสยี่ห้ออื่น)
+        (!APPLE_CODE.test(code) || /^\s*apple/i.test(name)),
+    )
     .map(([, name]) => name);
   return names.length ? matchModelOnly(price, names, label) : undefined;
 }
@@ -110,7 +128,7 @@ export function matchSku(
   sku: string | undefined,
   label: BoxLabel,
 ): SkuMatch | undefined {
-  if (!sku) return matchApple(price, skus, label);
+  if (!sku) return matchFactoryCode(price, skus, label);
   const names = skus.filter(([code]) => findSku(code) === sku).map(([, name]) => name);
   if (!names.length) return undefined;
 

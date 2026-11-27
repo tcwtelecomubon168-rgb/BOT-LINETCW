@@ -141,16 +141,26 @@ function parseTacs_(problems) {
   const product = colIndex_(head, 'ชื่อสินค้า', name, problems);
   if (code < 0 || product < 0) return [];
   const out = [];
+  const seen = {};
+  const bad = []; // เก็บแค่เลขแถว ไม่ส่งค่าในช่องออกไป
   for (let r = 1; r < grid.length; r++) {
     let t = trim_(grid[r][code]).replace(/[\s-]/g, '');
     const p = trim_(grid[r][product]);
     if (!t || !p) continue;
+    if (/^\d{15}$/.test(t)) t = t.slice(0, 8); // IMEI เต็ม: ส่งออกแค่ 8 หลักแรก
     if (/^\d{7}$/.test(t)) t = '0' + t; // ชีทตัดเลข 0 ตัวหน้าออก
     if (!/^\d{8}$/.test(t)) {
-      problems.push(name + ': แถว ' + (r + 1) + ' TAC ต้องเป็นเลข 8 หลัก');
+      bad.push(r + 1);
       continue;
     }
+    if (seen[t + '|' + p]) continue;
+    seen[t + '|' + p] = true;
     out.push([t, p]);
+  }
+  // สรุปเป็นข้อความเดียว (แจ้งทีละแถวทำให้ข้อมูลใหญ่จนบอทดึงไม่ทัน)
+  if (bad.length) {
+    problems.push(name + ': TAC ไม่ใช่เลข 8 หรือ 15 หลัก ' + bad.length +
+      ' แถว เช่น แถว ' + bad.slice(0, 5).join(', '));
   }
   return out;
 }
