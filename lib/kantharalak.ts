@@ -12,7 +12,8 @@ export const ZONE_BRANCHES = {
 export type Zone = keyof typeof ZONE_BRANCHES;
 
 const BRANCH = /กันทร?ลัก/; // ไม่ตรงกับ "กันทรารมย์"
-const CUT = /ตัด(?!สด)|เบิกจากสาขา/;
+// รวมกรณีพิมพ์ตก ต เช่น "ัดเครื่อง"
+export const CUT = /ตัด(?!สด)|ัดเครื่อง|เบิกจากสาขา/;
 
 function zoneWord(text: string): Zone | undefined {
   const event = /event|evnet|อีเว้น|อีเว็น|อีเวน/i.test(text);
@@ -21,14 +22,15 @@ function zoneWord(text: string): Zone | undefined {
 }
 
 // คำตอบของคำถามโซน: 1 / 2 / กด 1 / ชื่อโซน
-function zoneAnswer(text: string): Zone | undefined {
+export function zoneAnswer(text: string): Zone | undefined {
   const m = text.trim().match(/^(?:กด|เลข|ข้อ)?\s*([12๑๒])\s*(?:ค่ะ|คะ|ครับ|คับ|จ้า|นะคะ|นะครับ)?$/);
   if (m) return m[1] === "1" || m[1] === "๑" ? "event" : "inside";
   return zoneWord(text);
 }
 
 export function needsZoneAsk(text: string, history: HistoryItem[]): boolean {
-  if (!BRANCH.test(text) || zoneWord(text)) return false;
+  // ถามถึงทั้งสองโซน → ไม่ต้องให้เลือกโซน (ตรวจจากชีทว่าโซนไหนมี)
+  if (!BRANCH.test(text) || zoneWord(text) || /ทั้ง\s*(2|สอง)/.test(text)) return false;
   return CUT.test(text) || history.some((h) => h.role === "user" && CUT.test(h.text));
 }
 

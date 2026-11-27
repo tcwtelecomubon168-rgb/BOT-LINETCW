@@ -2,6 +2,7 @@ import { validateSignature, webhook } from "@line/bot-sdk";
 import { bankReply, detectPayType, FINANCE_QR_PATH, FINANCE_QR_TEXT } from "@/lib/bank";
 import { askGemini, type GeminiResult } from "@/lib/gemini";
 import { verifyStock } from "@/lib/stock";
+import { verifyCutBranch } from "@/lib/cut-branch";
 import { PRICE_LIST_REPLY } from "@/lib/constants";
 import { asksPriceList } from "@/lib/price-list";
 import { asksCashPriceWithoutModel, CASH_PRICE_ASK_REPLY } from "@/lib/cash-price";
@@ -203,6 +204,8 @@ async function handleEvent(ev: WebhookEvent, baseUrl: string) {
       answer.intent === "requisition" && context.area
         ? answer
         : verifyStock(answer, context.stockList, context.area);
+    // คำตอบเรื่องสาขา ตรวจและเขียนใหม่จากข้อมูลสต๊อกสาขาจริง
+    r = verifyCutBranch(r, text, history, data.branchStock);
   }
 
   // reply ว่าง (intent other หรือ error) → ไม่ส่งอะไร
