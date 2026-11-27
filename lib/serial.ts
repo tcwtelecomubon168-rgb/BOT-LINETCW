@@ -12,15 +12,18 @@ const FILLER =
 const KEYWORD = /serial|s\/n|ซีเรียล|เลขเครื่อง/i;
 // ชื่อรุ่นที่พิมพ์ติดกัน เช่น iphone15pro ไม่ใช่ Serial
 const MODEL_WORDS =
-  /iphone|ipad|galaxy|samsung|oppo|vivo|realme|redmi|honor|infinix|tecno|reno|note|smart|spark|tab|pro|max|lite|plus|ultra|\d+gb|^sm[a-z]\d{3}/i;
+  /iphone|ipad|galaxy|samsung|oppo|vivo|realme|redmi|xiaomi|honor|infinix|tecno|nubia|blade|benco|nokia|wiko|reno|note|smart|spark|tab|pro|max|lite|plus|ultra|\d+gb|^sm[a-z]\d{3}/i;
 
 // undefined = ไม่ใช่ข้อความส่ง Serial · cashCut = มีคำว่า "ตัดสด"
 export function parseSerialText(text: string): { serial: string; cashCut: boolean } | undefined {
   const token = text.replace(FILLER, " ").trim();
   if (!/^[a-z0-9]{10,12}$/i.test(token)) return undefined;
-  if ((token.match(/\d/g)?.length ?? 0) < 2 || (token.match(/[a-z]/gi)?.length ?? 0) < 2) {
-    return undefined;
-  }
-  if (!KEYWORD.test(text) && MODEL_WORDS.test(token)) return undefined;
-  return { serial: normalizeSerial(token), cashCut: text.includes("ตัดสด") };
+  // Serial แบบสุ่มของ Apple บางเลขมีตัวเลขแค่ตัวเดียว
+  if (!/\d/.test(token) || (token.match(/[a-z]/gi)?.length ?? 0) < 2) return undefined;
+  const keyword = KEYWORD.test(text);
+  if (!keyword && MODEL_WORDS.test(token)) return undefined;
+  const cashCut = text.includes("ตัดสด");
+  // มีคำอื่น เช่น "ราคา" แต่ไม่มี "ตัดสด" หรือคำว่า Serial → ให้เข้าขั้นตอนปกติ
+  if (!cashCut && !keyword && text.trim() !== token) return undefined;
+  return { serial: normalizeSerial(token), cashCut };
 }
