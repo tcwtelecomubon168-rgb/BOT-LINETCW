@@ -13,7 +13,17 @@ export interface BoxLabel {
 }
 
 type PriceRow = BotData["price"][number];
-type Spec = { key: string; ram?: number; storage?: number; network?: "5g" | "4g" };
+type Spec = {
+  key: string;
+  ram?: number; // RAM จริง
+  ramTotal?: number; // RAM รวมส่วนขยาย เช่น Ram2+4 = 6
+  storage?: number;
+  network?: "5g" | "4g";
+};
+
+// บางกล่องพิมพ์ RAM รวม เช่น 6(2+4)GB จึงรับได้ทั้ง RAM จริงและ RAM รวม
+export const ramFits = (spec: { ram?: number; ramTotal?: number }, ram: number) =>
+  ram === spec.ram || ram === spec.ramTotal;
 
 // คำที่ไม่ใช้แยกรุ่น (ยี่ห้อตรวจแยกต่างหาก)
 const IGNORE =
@@ -40,6 +50,7 @@ export function parseSpec(name: string): Spec {
 
   let ram: number | undefined;
   let storage: number | undefined;
+  let ramTotal: number | undefined;
   const take = (re: RegExp, read: (m: RegExpMatchArray) => boolean) => {
     if (storage !== undefined) return;
     const m = t.match(re);
@@ -55,9 +66,10 @@ export function parseSpec(name: string): Spec {
   };
 
   // Ram4 Rom128 · Ram2+4 Rom 64GB
-  take(/ram\s*(\d+)(?:\s*\+\s*\d+)?\s*rom\s*(\d+)\s*(?:gb|g|tb)?/, (m) => {
+  take(/ram\s*(\d+)(?:\s*\+\s*(\d+))?\s*rom\s*(\d+)\s*(?:gb|g|tb)?/, (m) => {
     ram = Number(m[1]);
-    storage = Number(m[2]);
+    if (m[2]) ramTotal = ram + Number(m[2]);
+    storage = Number(m[3]);
     return true;
   });
   // 8/256 · 8+256 · 256+12 · (6GB+128GB) · (8+128G)
@@ -89,7 +101,7 @@ export function parseSpec(name: string): Spec {
     .replace(/(?<![a-z0-9])(5g|4g|3g|lte)(?![a-z0-9])/g, " ")
     .replace(/[^a-z0-9+]/g, "");
 
-  return { key, ram, storage, network };
+  return { key, ram, ramTotal, storage, network };
 }
 
 export type BoxMatch = {
@@ -153,7 +165,8 @@ export function matchBoxLabel(price: PriceRow[], label: BoxLabel): BoxMatch | un
   let found = sameModel.filter(
     (c) =>
       c.spec.storage === undefined ||
-      (c.spec.storage === storage && (c.spec.ram === undefined || c.spec.ram === ram)),
+      (c.spec.storage === storage &&
+        (c.spec.ram === undefined || (!!ram && ramFits(c.spec, ram)))),
   );
 
   // ชีทมีรุ่นนี้รายการเดียว และค่าที่อ่านได้ไม่ขัดกัน (แค่อ่านไม่ครบ)
@@ -162,7 +175,7 @@ export function matchBoxLabel(price: PriceRow[], label: BoxLabel): BoxMatch | un
     const { spec } = sameModel[0];
     const missing = !storage || (spec.ram !== undefined && !ram);
     const conflict = (!!storage && storage !== spec.storage) ||
-      (!!ram && spec.ram !== undefined && ram !== spec.ram);
+      (!!ram && spec.ram !== undefined && !ramFits(spec, ram));
     // รุ่นเดียวกันมีแถวอื่นที่ยังไม่ได้ใส่รหัส → ความจุไม่แน่ ให้ถามกลับ
     const untagged = byCode.length > 0 && all.filter((c) => c.spec.key === spec.key).length > 1;
     if (missing && !conflict && !untagged) {

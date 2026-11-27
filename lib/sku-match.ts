@@ -1,7 +1,7 @@
 // เทียบ SKU บนฉลากกับตาราง "รหัสสินค้า" แล้วหาแถวในชีทราคา
 // ตารางเก็บแบบ "001-SM-A077FLVDTHL-VL" | "SAMSUNG GALAXY A07s 4/64 LIGHT VIOLET"
 import type { BotData } from "./data";
-import { brandOf, parseSpec, type BoxLabel } from "./image-match";
+import { brandOf, parseSpec, ramFits, type BoxLabel } from "./image-match";
 
 type PriceRow = BotData["price"][number];
 export type SkuRow = [string, string]; // [รหัส, ชื่อสินค้า]
@@ -77,7 +77,7 @@ function matchModelOnly(price: PriceRow[], names: string[], label: BoxLabel): Sk
   const found = siblings.filter(
     ({ spec }) =>
       (!label.storage_gb || !spec.storage || spec.storage === label.storage_gb) &&
-      (!label.ram_gb || !spec.ram || spec.ram === label.ram_gb),
+      (!label.ram_gb || !spec.ram || ramFits(spec, label.ram_gb)),
   );
   if (found.length !== 1) return {};
   const { row, spec } = found[0];
@@ -139,6 +139,6 @@ export function matchSku(
   const spec = parseSpec(rows[0][1]);
   const conflict =
     (!!label.storage_gb && !!spec.storage && label.storage_gb !== spec.storage) ||
-    (!!label.ram_gb && !!spec.ram && label.ram_gb !== spec.ram);
+    (!!label.ram_gb && !!spec.ram && !ramFits(spec, label.ram_gb));
   return conflict ? { conflict: true } : { row: rows[0] };
 }
