@@ -48,10 +48,21 @@ ${found.options.map((r) => `- ${r[1]}`).join("\n")}`,
   return { reply: CASH_PRICE_ASK_REPLY };
 }
 
-export const codePriceReply = (data: BotData, code: TypedCode): CodeReply =>
-  "serial" in code
-    ? toReply("Serial", matchSerial(data.price, data.serials ?? [], code.serial))
-    : toReply("IMEI", matchTac(data.price, data.tacs ?? [], { tacs: code.tacs }));
+// ทุกแถวของ TAC นี้ในตารางระบุความจุตรงกัน → ใช้ความจุนั้น (ต่างกันหรือไม่ระบุ = ไม่เดา)
+function tableCapacity(table: [string, string][], tacs: string[]) {
+  const specs = table.filter(([tac]) => tacs.includes(tac)).map(([, name]) => parseSpec(name));
+  const same = new Set(specs.map((s) => `${s.ram}|${s.storage}`)).size === 1;
+  return same && specs[0].storage ? { ram_gb: specs[0].ram, storage_gb: specs[0].storage } : {};
+}
+
+export const codePriceReply = (data: BotData, code: TypedCode): CodeReply => {
+  if ("serial" in code) {
+    return toReply("Serial", matchSerial(data.price, data.serials ?? [], code.serial));
+  }
+  const table = data.tacs ?? [];
+  const label = { tacs: code.tacs, ...tableCapacity(table, code.tacs) };
+  return toReply("IMEI", matchTac(data.price, table, label));
+};
 
 // ของที่รอข้อความถัดไป (Vercel เริ่มเครื่องใหม่แล้วหาย → ข้อความถัดไปเข้าขั้นตอนปกติ)
 const WAIT_MS = 5 * 60_000;
@@ -79,28 +90,47 @@ export function setCapacityOptions(userId: string, rows: PriceRow[]): void {
   pending.set(userId, { rows, at: Date.now() });
 }
 
-// ลูกค้าตอบเฉพาะความจุ เช่น "4/64", "128", "ความจุ 256GB ค่ะ" → คืนแถวที่ตรงรายการเดียว
-export function pickCapacity(text: string, rows: PriceRow[]): PriceRow | undefined {
+// ข้อความที่มีแต่ความจุ เช่น "4/64", "อีมี่ 128", "ความจุ 256GB ค่ะ" · ไม่ใช่ = undefined
+function readCapacity(text: string): { ram?: number; storage: number } | undefined {
   const rest = text
     .toLowerCase()
-    .replace(/ความจุ|เอา|รุ่น|ตัว|ตัดสด|ราคา|ค่ะ|คะ|ครับ|คับ|จ้า|นะ|ram|rom|แรม|รอม/g, " ")
+    .replace(/ความจุ|เอา|รุ่น|ตัวสี|ตัว|ตัดสด|ราคา|imei|อีมี่|อีมี|ค่ะ|คะ|ครับ|คับ|จ้า|นะ|ram|rom|แรม|รอม/g, " ")
     .trim();
   const m = rest.match(/^(?:(\d+)\s*(?:gb|g)?\s*[+/]\s*)?(\d+)\s*(gb|g|tb)?$/);
   if (!m) return undefined;
-  const ram = m[1] ? Number(m[1]) : undefined;
-  const storage = Number(m[2]) * (m[3] === "tb" ? 1024 : 1);
+  return {
+    ram: m[1] ? Number(m[1]) : undefined,
+    storage: Number(m[2]) * (m[3] === "tb" ? 1024 : 1),
+  };
+}
+
+// คืนแถวที่ตรงรายการเดียว
+export function pickCapacity(text: string, rows: PriceRow[]): PriceRow | undefined {
+  const want = readCapacity(text);
+  if (!want) return undefined;
   const found = rows.filter((row) => {
     const spec = parseSpec(row[1]);
-    return spec.storage === storage && (!ram || ramFits(spec, ram));
+    return spec.storage === want.storage && (!want.ram || ramFits(spec, want.ram));
   });
   return found.length === 1 ? found[0] : undefined;
 }
 
-// ใช้ได้กับข้อความถัดไปข้อความเดียว
-export function takeCapacityAnswer(userId: string, text: string): PriceRow | undefined {
+// คำตอบหลังถามความจุ: ตรงตัวเลือก = แจ้งราคา · เป็นความจุแต่ไม่ตรง = ถามซ้ำ (ไม่ให้ AI เดารุ่น)
+// undefined = เป็นข้อความเรื่องอื่น ให้เข้าขั้นตอนปกติ
+export function takeCapacityAnswer(
+  userId: string,
+  text: string,
+): { reply: string; row?: PriceRow } | undefined {
   const p = pending.get(userId);
-  pending.delete(userId);
-  return p && Date.now() - p.at <= WAIT_MS ? pickCapacity(text, p.rows) : undefined;
+  if (!p) return undefined;
+  const row = pickCapacity(text, p.rows);
+  const valid = Date.now() - p.at <= WAIT_MS;
+  if (valid && !row && readCapacity(text)) {
+    return {
+      reply: `รบกวนเลือกความจุจากรายการนี้นะคะ
+${p.rows.map((r) => `- ${r[1]}`).join("\n")}`,
+    };
+  }
+  pending.delete(userId); // เลือกได้แล้ว หรือคุยเรื่องอื่น
+  return valid && row ? { row, reply: priceLine(row) } : undefined;
 }
-
-export const capacityPriceReply = priceLine;

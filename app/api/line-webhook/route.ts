@@ -15,7 +15,6 @@ import { getHistory, pushHistory } from "@/lib/history";
 import { buildPrompt } from "@/lib/prompt";
 import { findBoxPrice } from "@/lib/box-price";
 import {
-  capacityPriceReply,
   codePriceReply,
   IMEI_INVALID_REPLY,
   parseImeiText,
@@ -231,11 +230,10 @@ async function handleEvent(ev: WebhookEvent, baseUrl: string) {
   // ตอบความจุที่ถามไว้หลังส่ง IMEI
   const picked = takeCapacityAnswer(userId, text);
   if (picked) {
-    const answer = capacityPriceReply(picked);
-    console.log(JSON.stringify({ intent: "price_from_imei", capacityPicked: picked[1] }));
-    await reply(token, userId, answer);
-    pushHistory(userId, "user", `ตัดสด ${picked[1]}`);
-    pushHistory(userId, "admin", answer);
+    console.log(JSON.stringify({ intent: "price_from_imei", capacityPicked: picked.row?.[1] ?? null }));
+    await reply(token, userId, picked.reply);
+    pushHistory(userId, "user", picked.row ? `ตัดสด ${picked.row[1]}` : text);
+    pushHistory(userId, "admin", picked.reply);
     return;
   }
 
