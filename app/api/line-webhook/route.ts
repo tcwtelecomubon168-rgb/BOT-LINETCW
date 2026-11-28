@@ -4,6 +4,7 @@ import { askGemini, type GeminiResult } from "@/lib/gemini";
 import { verifyStock } from "@/lib/stock";
 import { verifyCutBranch } from "@/lib/cut-branch";
 import { verifyPrice } from "@/lib/verify-price";
+import { priceAnswer } from "@/lib/price-answer";
 import { PRICE_LIST_REPLY } from "@/lib/constants";
 import { asksPriceList } from "@/lib/price-list";
 import { asksCashPriceWithoutModel, CASH_PRICE_ASK_REPLY } from "@/lib/cash-price";
@@ -297,8 +298,13 @@ async function handleEvent(ev: WebhookEvent, baseUrl: string) {
 
   const history = getHistory(userId);
   const payType = detectPayType(text, history);
+  // ถามราคาที่ระบุรุ่นชัด → โค้ดตอบจากชีทเอง ไม่ผ่าน AI
+  const priced = payType ? undefined : priceAnswer(data.price, text, history);
   let r: GeminiResult;
-  if (payType) {
+  if (priced) {
+    console.log(JSON.stringify({ intent: "price", by: "code" }));
+    r = { intent: "price", reply: priced };
+  } else if (payType) {
     console.log(JSON.stringify({ intent: "bank_account", payType, by: "code" }));
     const bank = bankReply(data.faq, payType);
     r = {
