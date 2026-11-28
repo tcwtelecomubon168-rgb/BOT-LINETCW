@@ -14,6 +14,7 @@ import { getBotData } from "@/lib/data";
 import { getHistory, pushHistory } from "@/lib/history";
 import { buildPrompt } from "@/lib/prompt";
 import { findBoxPrice } from "@/lib/box-price";
+import { isBareProduct } from "@/lib/bare-product";
 import {
   codePriceReply,
   IMEI_INVALID_REPLY,
@@ -241,6 +242,13 @@ async function handleEvent(ev: WebhookEvent, baseUrl: string) {
     await reply(token, userId, picked.reply);
     pushHistory(userId, "user", picked.row ? `ตัดสด ${picked.row[1]}` : text);
     pushHistory(userId, "admin", picked.reply);
+    return;
+  }
+
+  // พิมพ์แค่ชื่อรุ่น → เงียบ
+  if (isBareProduct(text, getHistory(userId))) {
+    console.log(JSON.stringify({ intent: "other", topic: "bare_product", by: "code" }));
+    pushHistory(userId, "user", text);
     return;
   }
 
