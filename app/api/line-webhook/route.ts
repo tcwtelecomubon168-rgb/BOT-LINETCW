@@ -194,6 +194,13 @@ async function handleEvent(ev: WebhookEvent, baseUrl: string) {
 
   const text = ev.message.text;
 
+  // เรื่องผ่อน ให้เจ้าหน้าที่ดูแล → บอทเงียบ ไม่แจ้งกลุ่ม
+  if (text.includes("ผ่อน")) {
+    console.log(JSON.stringify({ intent: "other", topic: "installment", by: "code" }));
+    pushHistory(userId, "user", text);
+    return;
+  }
+
   // พิมพ์เลข IMEI/Serial + "ตัดสด" → โค้ดค้นราคาเอง (ต้องดักก่อนขั้นตอนอื่น ไม่ให้เลขไปถึง AI)
   const imei = parseImeiText(text);
   const typed = imei ?? parseSerialText(text);
