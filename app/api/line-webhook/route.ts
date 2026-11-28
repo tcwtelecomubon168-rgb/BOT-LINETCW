@@ -3,6 +3,7 @@ import { bankReply, detectPayType, FINANCE_QR_PATH, FINANCE_QR_TEXT } from "@/li
 import { askGemini, type GeminiResult } from "@/lib/gemini";
 import { verifyStock } from "@/lib/stock";
 import { verifyCutBranch } from "@/lib/cut-branch";
+import { verifyPrice } from "@/lib/verify-price";
 import { PRICE_LIST_REPLY } from "@/lib/constants";
 import { asksPriceList } from "@/lib/price-list";
 import { asksCashPriceWithoutModel, CASH_PRICE_ASK_REPLY } from "@/lib/cash-price";
@@ -306,6 +307,8 @@ async function handleEvent(ev: WebhookEvent, baseUrl: string) {
         : verifyStock(answer, context.stockList, context.area);
     // คำตอบเรื่องสาขา ตรวจและเขียนใหม่จากข้อมูลสต๊อกสาขาจริง
     r = verifyCutBranch(r, text, history, data.branchStock);
+    // ตัวเลขราคาต้องตรงกับชีท
+    r = verifyPrice(r, data.price);
   }
 
   // reply ว่าง (intent other หรือ error) → ไม่ส่งอะไร
